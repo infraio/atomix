@@ -332,6 +332,17 @@ public class RaftPartitionGroup implements ManagedPartitionGroup {
     }
 
     /**
+     * Sets whether to flush commits to disk.
+     *
+     * @param flushOnCommit whether to flush commits to disk
+     * @return the Raft partition group builder
+     */
+    public Builder withFlushOnCommit(boolean flushOnCommit) {
+      config.setFlushOnCommit(flushOnCommit);
+      return this;
+    }
+
+    /**
      * Sets the path to the data directory.
      *
      * @param dataDir the path to the replica's data directory
