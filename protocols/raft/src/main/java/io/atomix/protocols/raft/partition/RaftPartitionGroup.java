@@ -338,7 +338,7 @@ public class RaftPartitionGroup implements ManagedPartitionGroup {
      * @return the Raft partition group builder
      */
     public Builder withFlushOnCommit(boolean flushOnCommit) {
-      config.setFlushOnCommit(flushOnCommit);
+      config.getStorageConfig().setFlushOnCommit(flushOnCommit);
       return this;
     }
 
