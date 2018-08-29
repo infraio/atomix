@@ -15,6 +15,8 @@
  */
 package io.atomix.protocols.raft.storage;
 
+import io.atomix.protocols.raft.storage.log.RaftLogSegmentDescriptor;
+import io.atomix.protocols.raft.storage.log.RaftLogSegmentFile;
 import io.atomix.protocols.raft.storage.log.SegmentedRaftLog;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.protocols.raft.storage.snapshot.SnapshotFile;
@@ -23,9 +25,8 @@ import io.atomix.protocols.raft.storage.system.MetaStore;
 import io.atomix.storage.StorageException;
 import io.atomix.storage.StorageLevel;
 import io.atomix.storage.buffer.FileBuffer;
-import io.atomix.protocols.raft.storage.log.RaftLogSegmentDescriptor;
-import io.atomix.protocols.raft.storage.log.RaftLogSegmentFile;
 import io.atomix.storage.statistics.StorageStatistics;
+import io.atomix.utils.serializer.Namespace;
 import io.atomix.utils.serializer.Serializer;
 
 import java.io.File;
@@ -68,7 +69,7 @@ public class RaftStorage {
   private final String prefix;
   private final StorageLevel storageLevel;
   private final File directory;
-  private final Serializer serializer;
+  private final Namespace namespace;
   private final int maxSegmentSize;
   private final int maxEntrySize;
   private final int maxEntriesPerSegment;
@@ -83,7 +84,7 @@ public class RaftStorage {
       String prefix,
       StorageLevel storageLevel,
       File directory,
-      Serializer serializer,
+      Namespace namespace,
       int maxSegmentSize,
       int maxEntrySize,
       int maxEntriesPerSegment,
@@ -95,7 +96,7 @@ public class RaftStorage {
     this.prefix = prefix;
     this.storageLevel = storageLevel;
     this.directory = directory;
-    this.serializer = serializer;
+    this.namespace = namespace;
     this.maxSegmentSize = maxSegmentSize;
     this.maxEntrySize = maxEntrySize;
     this.maxEntriesPerSegment = maxEntriesPerSegment;
@@ -118,12 +119,12 @@ public class RaftStorage {
   }
 
   /**
-   * Returns the storage serializer.
+   * Returns the storage namespace.
    *
-   * @return The storage serializer.
+   * @return The storage namespace.
    */
-  public Serializer serializer() {
-    return serializer;
+  public Namespace namespace() {
+    return namespace;
   }
 
   /**
@@ -275,7 +276,7 @@ public class RaftStorage {
    * @return The metastore.
    */
   public MetaStore openMetaStore() {
-    return new MetaStore(this, serializer);
+    return new MetaStore(this, Serializer.using(namespace));
   }
 
   /**
@@ -327,7 +328,7 @@ public class RaftStorage {
         .withName(prefix)
         .withDirectory(directory)
         .withStorageLevel(storageLevel)
-        .withSerializer(serializer)
+        .withNamespace(namespace)
         .withMaxSegmentSize(maxSegmentSize)
         .withMaxEntrySize(maxEntrySize)
         .withMaxEntriesPerSegment(maxEntriesPerSegment)
@@ -399,7 +400,7 @@ public class RaftStorage {
     private String prefix = DEFAULT_PREFIX;
     private StorageLevel storageLevel = StorageLevel.DISK;
     private File directory = new File(DEFAULT_DIRECTORY);
-    private Serializer serializer;
+    private Namespace namespace;
     private int maxSegmentSize = DEFAULT_MAX_SEGMENT_SIZE;
     private int maxEntrySize = DEFAULT_MAX_ENTRY_SIZE;
     private int maxEntriesPerSegment = DEFAULT_MAX_ENTRIES_PER_SEGMENT;
@@ -467,14 +468,14 @@ public class RaftStorage {
     }
 
     /**
-     * Sets the storage serializer.
+     * Sets the storage namespace.
      *
-     * @param serializer The storage serializer.
+     * @param namespace The storage namespace.
      * @return The storage builder.
      * @throws NullPointerException If the {@code serializer} is {@code null}
      */
-    public Builder withSerializer(Serializer serializer) {
-      this.serializer = checkNotNull(serializer, "serializer cannot be null");
+    public Builder withNamespace(Namespace namespace) {
+      this.namespace = checkNotNull(namespace, "namespace cannot be null");
       return this;
     }
 
@@ -657,7 +658,7 @@ public class RaftStorage {
           prefix,
           storageLevel,
           directory,
-          serializer,
+          namespace,
           maxSegmentSize,
           maxEntrySize,
           maxEntriesPerSegment,

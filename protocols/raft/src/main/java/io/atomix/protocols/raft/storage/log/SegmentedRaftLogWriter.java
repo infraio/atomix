@@ -58,10 +58,10 @@ public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
       currentWriter.close();
       currentSegment = log.resetSegments(index);
       currentWriter = currentSegment.writer();
-      log.resetHead(index);
     } else {
       truncate(index - 1);
     }
+    log.resetHead(index);
   }
 
   /**
@@ -125,8 +125,7 @@ public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
     }
 
     // Delete all segments with first indexes greater than the given index.
-    while (index < currentWriter.firstIndex() - 1) {
-      currentWriter.close();
+    while (index < currentWriter.firstIndex() && currentSegment != log.getFirstSegment()) {
       log.removeSegment(currentSegment);
       currentSegment = log.getLastSegment();
       currentWriter = currentSegment.writer();

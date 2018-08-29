@@ -17,15 +17,15 @@ package io.atomix.protocols.raft.storage.log;
 
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.storage.StorageException;
-import io.atomix.storage.buffer.Buffer;
 import io.atomix.storage.buffer.Bytes;
-import io.atomix.storage.buffer.FileBuffer;
-import io.atomix.storage.buffer.HeapBuffer;
-import io.atomix.storage.buffer.MappedBuffer;
-import io.atomix.storage.buffer.SlicedBuffer;
-import io.atomix.utils.serializer.Serializer;
+import io.atomix.utils.serializer.Namespace;
 
+import java.io.File;
+import java.io.IOException;
 import java.nio.BufferOverflowException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
@@ -45,28 +45,34 @@ import java.util.zip.Checksum;
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
 public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
+  private final File file;
+  private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
   private final RaftLogSegmentCache cache;
   private final RaftLogIndex index;
-  private final Buffer buffer;
-  private final Serializer serializer;
-  private final Buffer memory = HeapBuffer.allocate().flip();
+  private final Namespace namespace;
+  private final ByteBuffer memory;
   private final long firstIndex;
   private Indexed<E> lastEntry;
 
   public RaftLogSegmentWriter(
+      File file,
+      FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
       RaftLogSegmentCache cache,
       RaftLogIndex index,
-      Serializer serializer) {
+      Namespace namespace) {
+    this.file = file;
+    this.channel = channel;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
     this.cache = cache;
     this.index = index;
-    this.buffer = descriptor.buffer().slice();
-    this.serializer = serializer;
+    this.memory = ByteBuffer.allocate((maxEntrySize + Bytes.INTEGER + Bytes.INTEGER) * 2);
+    memory.limit(0);
+    this.namespace = namespace;
     this.firstIndex = descriptor.index();
     reset(0);
   }
@@ -79,64 +85,69 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
     long nextIndex = firstIndex;
 
     // Clear the buffer indexes.
-    buffer.clear();
-    memory.clear().flip();
+    try {
+      channel.position(RaftLogSegmentDescriptor.BYTES);
+      memory.clear().flip();
 
-    // Record the current buffer position.
-    int position = buffer.position();
-
-    // Read more bytes from the segment if necessary.
-    if (memory.remaining() < maxEntrySize) {
-      buffer.mark()
-          .read(memory.clear().limit(maxEntrySize * 2))
-          .reset();
-      memory.flip();
-    }
-
-    // Read the entry length.
-    int length = memory.mark().readInt();
-
-    // If the length is non-zero, read the entry.
-    while (0 < length && length <= maxEntrySize && (index == 0 || nextIndex <= index)) {
-
-      // Read the checksum of the entry.
-      final long checksum = memory.readUnsignedInt();
-
-      // Read the entry into memory.
-      byte[] bytes = new byte[length];
-      memory.read(bytes);
-
-      // Compute the checksum for the entry bytes.
-      final Checksum crc32 = new CRC32();
-      crc32.update(bytes, 0, length);
-
-      // If the stored checksum equals the computed checksum, return the entry.
-      if (checksum == crc32.getValue()) {
-        final E entry = serializer.decode(bytes);
-        lastEntry = new Indexed<>(nextIndex, entry, length);
-        this.index.index(nextIndex, position);
-        nextIndex++;
-      } else {
-        break;
-      }
-
-      // Update the current position for indexing.
-      position = buffer.position() + memory.position();
+      // Record the current buffer position.
+      long position = channel.position();
 
       // Read more bytes from the segment if necessary.
       if (memory.remaining() < maxEntrySize) {
-        buffer.skip(memory.position())
-            .mark()
-            .read(memory.clear().limit(maxEntrySize * 2))
-            .reset();
+        memory.clear();
+        channel.read(memory);
+        channel.position(position);
         memory.flip();
       }
 
-      length = memory.mark().readInt();
-    }
+      // Read the entry length.
+      memory.mark();
+      int length = memory.getInt();
 
-    // Reset the buffer to the previous mark.
-    buffer.skip(memory.reset().position());
+      // If the length is non-zero, read the entry.
+      while (0 < length && length <= maxEntrySize && (index == 0 || nextIndex <= index)) {
+
+        // Read the checksum of the entry.
+        final long checksum = memory.getInt() & 0xFFFFFFFFL;
+
+        // Compute the checksum for the entry bytes.
+        final Checksum crc32 = new CRC32();
+        crc32.update(memory.array(), memory.position(), length);
+
+        // If the stored checksum equals the computed checksum, return the entry.
+        if (checksum == crc32.getValue()) {
+          int limit = memory.limit();
+          memory.limit(memory.position() + length);
+          final E entry = namespace.deserialize(memory);
+          memory.limit(limit);
+          lastEntry = new Indexed<>(nextIndex, entry, length);
+          this.index.index(nextIndex, (int) position);
+          nextIndex++;
+        } else {
+          break;
+        }
+
+        // Update the current position for indexing.
+        position = channel.position() + memory.position();
+
+        // Read more bytes from the segment if necessary.
+        if (memory.remaining() < maxEntrySize) {
+          channel.position(position);
+          memory.clear();
+          channel.read(memory);
+          channel.position(position);
+          memory.flip();
+        }
+
+        memory.mark();
+        length = memory.getInt();
+      }
+
+      // Reset the buffer to the previous mark.
+      channel.position(channel.position() + memory.reset().position());
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
   }
 
   @Override
@@ -164,7 +175,11 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
    * @return The size of the underlying buffer.
    */
   public long size() {
-    return buffer.offset() + buffer.position();
+    try {
+      return channel.position();
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
   }
 
   /**
@@ -216,41 +231,44 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
     // Store the entry index.
     final long index = getNextIndex();
 
-    // Serialize the entry.
-    final byte[] bytes = serializer.encode(entry);
-    final int length = bytes.length;
+    try {
+      // Serialize the entry.
+      memory.clear();
+      memory.position(Bytes.INTEGER + Bytes.INTEGER);
+      namespace.serialize(entry, memory);
+      memory.flip();
+      final int length = memory.limit() - (Bytes.INTEGER + Bytes.INTEGER);
 
-    // Ensure there's enough space left in the buffer to store the entry.
-    if (buffer.remaining() < length + Bytes.INTEGER + Bytes.INTEGER) {
-      throw new BufferOverflowException();
+      // Ensure there's enough space left in the buffer to store the entry.
+      long position = channel.position();
+      if (descriptor.maxSegmentSize() - position < length + Bytes.INTEGER + Bytes.INTEGER) {
+        throw new BufferOverflowException();
+      }
+
+      // If the entry length exceeds the maximum entry size then throw an exception.
+      if (length > maxEntrySize) {
+        throw new StorageException.TooLarge("Entry size " + length + " exceeds maximum allowed bytes (" + maxEntrySize + ")");
+      }
+
+      // Compute the checksum for the entry.
+      final Checksum crc32 = new CRC32();
+      crc32.update(memory.array(), Bytes.INTEGER + Bytes.INTEGER, memory.limit() - (Bytes.INTEGER + Bytes.INTEGER));
+      final long checksum = crc32.getValue();
+
+      // Create a single byte[] in memory for the entire entry and write it as a batch to the underlying buffer.
+      memory.putInt(0, length);
+      memory.putInt(Bytes.INTEGER, (int) checksum);
+      channel.write(memory);
+
+      // Update the last entry with the correct index/term/length.
+      Indexed<E> indexedEntry = new Indexed<>(index, entry, length);
+      this.lastEntry = indexedEntry;
+      this.cache.put(indexedEntry);
+      this.index.index(index, (int) position);
+      return (Indexed<T>) indexedEntry;
+    } catch (IOException e) {
+      throw new RaftIOException(e);
     }
-
-    // If the entry length exceeds the maximum entry size then throw an exception.
-    if (length > maxEntrySize) {
-      throw new StorageException.TooLarge("Entry size " + length + " exceeds maximum allowed bytes (" + maxEntrySize + ")");
-    }
-
-    // Compute the checksum for the entry.
-    final Checksum crc32 = new CRC32();
-    crc32.update(bytes, 0, length);
-    final long checksum = crc32.getValue();
-
-    // Record the current buffer position;
-    int position = buffer.position();
-
-    // Create a single byte[] in memory for the entire entry and write it as a batch to the underlying buffer.
-    buffer.write(memory.clear()
-        .writeInt(length)
-        .writeUnsignedInt(checksum)
-        .write(bytes)
-        .flip());
-
-    // Update the last entry with the correct index/term/length.
-    Indexed<E> indexedEntry = new Indexed<>(index, entry, length);
-    this.lastEntry = indexedEntry;
-    this.cache.put(indexedEntry);
-    this.index.index(index, position);
-    return (Indexed<T>) indexedEntry;
   }
 
   @Override
@@ -264,44 +282,64 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
     // Reset the last entry.
     lastEntry = null;
 
-    // If the index is less than the segment index, clear the segment buffer.
-    if (index < descriptor.index()) {
-      buffer.zero().clear();
+    try {
+      // Truncate the index.
       this.cache.truncate(index);
       this.index.truncate(index);
-      return;
+
+      if (index < descriptor.index()) {
+        channel.position(RaftLogSegmentDescriptor.BYTES);
+        memory.clear();
+        for (int i = 0; i < memory.limit(); i++) {
+          memory.put(i, (byte) 0);
+        }
+        channel.write(memory);
+        channel.position(RaftLogSegmentDescriptor.BYTES);
+      } else {
+        // Reset the writer to the given index.
+        reset(index);
+
+        // Zero entries after the given index.
+        long position = channel.position();
+        memory.clear();
+        for (int i = 0; i < memory.limit(); i++) {
+          memory.put(i, (byte) 0);
+        }
+        channel.write(memory);
+        channel.position(position);
+      }
+    } catch (IOException e) {
+      throw new RaftIOException(e);
     }
-
-    // Truncate the index.
-    this.cache.truncate(index);
-    this.index.truncate(index);
-
-    // Reset the writer to the given index.
-    reset(index);
-
-    // Zero entries after the given index.
-    buffer.zero(buffer.position());
   }
 
   @Override
   public void flush() {
-    buffer.flush();
+    try {
+      channel.force(true);
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
   }
 
   @Override
   public void close() {
-    buffer.close();
+    try {
+      flush();
+      channel.close();
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
   }
 
   /**
    * Deletes the segment.
    */
   void delete() {
-    Buffer buffer = this.buffer instanceof SlicedBuffer ? ((SlicedBuffer) this.buffer).root() : this.buffer;
-    if (buffer instanceof FileBuffer) {
-      ((FileBuffer) buffer).delete();
-    } else if (buffer instanceof MappedBuffer) {
-      ((MappedBuffer) buffer).delete();
+    try {
+      Files.deleteIfExists(file.toPath());
+    } catch (IOException e) {
+      throw new RaftIOException(e);
     }
   }
 }

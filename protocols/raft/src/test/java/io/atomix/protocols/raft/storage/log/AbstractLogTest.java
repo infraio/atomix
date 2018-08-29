@@ -18,7 +18,6 @@ package io.atomix.protocols.raft.storage.log;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.storage.StorageLevel;
 import io.atomix.utils.serializer.Namespace;
-import io.atomix.utils.serializer.Serializer;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -49,10 +48,10 @@ import static org.junit.Assert.assertTrue;
  */
 @RunWith(Parameterized.class)
 public abstract class AbstractLogTest {
-  private static final Serializer SERIALIZER = Serializer.using(Namespace.builder()
+  private static final Namespace NAMESPACE = Namespace.builder()
       .register(TestEntry.class)
       .register(byte[].class)
-      .build());
+      .build();
 
   protected static final TestEntry ENTRY = new TestEntry(1, 32);
   private static final Path PATH = Paths.get("target/test-logs/");
@@ -64,7 +63,8 @@ public abstract class AbstractLogTest {
   protected AbstractLogTest(int maxSegmentSize, int cacheSize) {
     this.maxSegmentSize = maxSegmentSize;
     this.cacheSize = cacheSize;
-    this.entriesPerSegment = (maxSegmentSize - 64) / (SERIALIZER.encode(ENTRY).length + 8);
+    int entryLength = (NAMESPACE.serialize(ENTRY).length + 8);
+    this.entriesPerSegment = (maxSegmentSize - 64) / entryLength;
   }
 
   protected abstract StorageLevel storageLevel();
@@ -74,7 +74,7 @@ public abstract class AbstractLogTest {
     List<Object[]> runs = new ArrayList<>();
     for (int i = 1; i <= 20; i++) {
       for (int j = 1; j <= 20; j++) {
-        runs.add(new Object[]{64 + (i * (SERIALIZER.encode(ENTRY).length + 8) + j), j});
+        runs.add(new Object[]{64 + (i * (NAMESPACE.serialize(ENTRY).length + 8) + j), j});
       }
     }
     return runs;
@@ -84,7 +84,7 @@ public abstract class AbstractLogTest {
     return SegmentedRaftLog.builder()
         .withName("test")
         .withDirectory(PATH.toFile())
-        .withSerializer(SERIALIZER)
+        .withNamespace(NAMESPACE)
         .withStorageLevel(storageLevel())
         .withMaxSegmentSize(maxSegmentSize)
         .withIndexDensity(.2)

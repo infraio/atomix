@@ -161,7 +161,7 @@ public class RaftPartitionServer implements Managed<RaftPartitionServer> {
             .withDynamicCompaction(config.getCompactionConfig().isDynamic())
             .withFreeDiskBuffer(config.getCompactionConfig().getFreeDiskBuffer())
             .withFreeMemoryBuffer(config.getCompactionConfig().getFreeMemoryBuffer())
-            .withSerializer(Serializer.using(RaftNamespaces.RAFT_STORAGE))
+            .withNamespace(RaftNamespaces.RAFT_STORAGE)
             .build())
         .build();
   }

@@ -23,7 +23,7 @@ import io.atomix.storage.buffer.Buffer;
 import io.atomix.storage.buffer.FileBuffer;
 import io.atomix.storage.buffer.HeapBuffer;
 import io.atomix.storage.buffer.MappedBuffer;
-import io.atomix.utils.serializer.Serializer;
+import io.atomix.utils.serializer.Namespace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,7 +61,7 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
   private final String name;
   private final StorageLevel storageLevel;
   private final File directory;
-  private final Serializer serializer;
+  private final Namespace namespace;
   private final int maxSegmentSize;
   private final int maxEntrySize;
   private final int maxEntriesPerSegment;
@@ -81,7 +81,7 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
       String name,
       StorageLevel storageLevel,
       File directory,
-      Serializer serializer,
+      Namespace namespace,
       int maxSegmentSize,
       int maxEntrySize,
       int maxEntriesPerSegment,
@@ -91,7 +91,7 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
     this.name = checkNotNull(name, "name cannot be null");
     this.storageLevel = checkNotNull(storageLevel, "storageLevel cannot be null");
     this.directory = checkNotNull(directory, "directory cannot be null");
-    this.serializer = checkNotNull(serializer, "serializer cannot be null");
+    this.namespace = checkNotNull(namespace, "namespace cannot be null");
     this.maxSegmentSize = maxSegmentSize;
     this.maxEntrySize = maxEntrySize;
     this.maxEntriesPerSegment = maxEntriesPerSegment;
@@ -415,7 +415,7 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
    * @return The segment instance.
    */
   protected RaftLogSegment<RaftLogEntry> newSegment(RaftLogSegmentFile segmentFile, RaftLogSegmentDescriptor descriptor) {
-    return new RaftLogSegment<>(segmentFile, descriptor, maxEntrySize, indexDensity, cacheSize, serializer);
+    return new RaftLogSegment<>(segmentFile, descriptor, maxEntrySize, indexDensity, cacheSize, namespace);
   }
 
   /**
@@ -691,7 +691,7 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
     protected String name = DEFAULT_NAME;
     protected StorageLevel storageLevel = StorageLevel.DISK;
     protected File directory = new File(DEFAULT_DIRECTORY);
-    protected Serializer serializer;
+    protected Namespace namespace;
     protected int maxSegmentSize = DEFAULT_MAX_SEGMENT_SIZE;
     protected int maxEntrySize = DEFAULT_MAX_ENTRY_SIZE;
     protected int maxEntriesPerSegment = DEFAULT_MAX_ENTRIES_PER_SEGMENT;
@@ -754,13 +754,13 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
     }
 
     /**
-     * Sets the journal serializer, returning the builder for method chaining.
+     * Sets the journal namespace, returning the builder for method chaining.
      *
-     * @param serializer The journal serializer.
+     * @param namespace The journal serializer.
      * @return The journal builder.
      */
-    public Builder withSerializer(Serializer serializer) {
-      this.serializer = checkNotNull(serializer, "serializer cannot be null");
+    public Builder withNamespace(Namespace namespace) {
+      this.namespace = checkNotNull(namespace, "namespace cannot be null");
       return this;
     }
 
@@ -883,7 +883,7 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
           name,
           storageLevel,
           directory,
-          serializer,
+          namespace,
           maxSegmentSize,
           maxEntrySize,
           maxEntriesPerSegment,

@@ -50,7 +50,6 @@ import io.atomix.protocols.raft.storage.log.entry.QueryEntry;
 import io.atomix.protocols.raft.storage.snapshot.Snapshot;
 import io.atomix.utils.concurrent.ThreadModel;
 import io.atomix.utils.serializer.Namespace;
-import io.atomix.utils.serializer.Serializer;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -79,7 +78,7 @@ import static org.mockito.Mockito.mock;
 public class RaftServiceManagerTest {
   private static final Path PATH = Paths.get("target/test-logs/");
 
-  private static final Serializer SERIALIZER = Serializer.using(Namespace.builder()
+  private static final Namespace NAMESPACE = Namespace.builder()
       .register(CloseSessionEntry.class)
       .register(CommandEntry.class)
       .register(ConfigurationEntry.class)
@@ -100,7 +99,7 @@ public class RaftServiceManagerTest {
       .register(OperationType.class)
       .register(Instant.class)
       .register(byte[].class)
-      .build());
+      .build();
 
   private RaftContext raft;
   private AtomicBoolean snapshotTaken;
@@ -231,7 +230,7 @@ public class RaftServiceManagerTest {
     RaftStorage storage = RaftStorage.builder()
         .withPrefix("test")
         .withDirectory(PATH.toFile())
-        .withSerializer(SERIALIZER)
+        .withNamespace(NAMESPACE)
         .build();
     PrimitiveTypeRegistry registry = new PrimitiveTypeRegistry() {
       @Override

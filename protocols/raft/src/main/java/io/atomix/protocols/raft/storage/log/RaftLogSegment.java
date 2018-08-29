@@ -17,7 +17,13 @@ package io.atomix.protocols.raft.storage.log;
 
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.protocols.raft.storage.log.index.SparseRaftLogIndex;
-import io.atomix.utils.serializer.Serializer;
+import io.atomix.utils.serializer.Namespace;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
@@ -28,11 +34,11 @@ import static com.google.common.base.Preconditions.checkState;
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
 public class RaftLogSegment<E> implements AutoCloseable {
-  protected final RaftLogSegmentFile file;
-  protected final RaftLogSegmentDescriptor descriptor;
+  private final RaftLogSegmentFile file;
+  private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
-  protected final RaftLogIndex index;
-  protected final Serializer serializer;
+  private final RaftLogIndex index;
+  private final Namespace namespace;
   private final RaftLogSegmentWriter<E> writer;
   private final RaftLogSegmentCache cache;
   private boolean open = true;
@@ -43,14 +49,28 @@ public class RaftLogSegment<E> implements AutoCloseable {
       int maxEntrySize,
       double indexDensity,
       int cacheSize,
-      Serializer serializer) {
+      Namespace namespace) {
     this.file = file;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
     this.index = new SparseRaftLogIndex(indexDensity);
-    this.serializer = serializer;
+    this.namespace = namespace;
     this.cache = new RaftLogSegmentCache(descriptor.index(), cacheSize);
-    this.writer = new RaftLogSegmentWriter<>(descriptor, maxEntrySize, cache, index, serializer);
+    this.writer = new RaftLogSegmentWriter<>(file.file(), openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
+  }
+
+  private FileChannel openChannel(File file) {
+    try {
+      if (file.exists()) {
+        return FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+      } else {
+        RandomAccessFile raf = new RandomAccessFile(file, "rw");
+        raf.setLength(descriptor.maxSegmentSize());
+        return raf.getChannel();
+      }
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
   }
 
   /**
@@ -160,7 +180,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
    */
   RaftLogSegmentReader<E> createReader() {
     checkOpen();
-    return new RaftLogSegmentReader<>(descriptor, maxEntrySize, cache, index, serializer);
+    return new RaftLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
   }
 
   /**
