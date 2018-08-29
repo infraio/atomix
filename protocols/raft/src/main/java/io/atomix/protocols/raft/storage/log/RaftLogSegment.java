@@ -15,6 +15,7 @@
  */
 package io.atomix.protocols.raft.storage.log;
 
+import com.google.common.collect.Sets;
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.protocols.raft.storage.log.index.SparseRaftLogIndex;
 import io.atomix.utils.serializer.Namespace;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
+import java.util.Set;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
@@ -40,6 +42,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
   private final RaftLogIndex index;
   private final Namespace namespace;
   private final RaftLogSegmentWriter<E> writer;
+  private final Set<RaftLogSegmentReader<E>> readers = Sets.newConcurrentHashSet();
   private final RaftLogSegmentCache cache;
   private boolean open = true;
 
@@ -180,7 +183,9 @@ public class RaftLogSegment<E> implements AutoCloseable {
    */
   RaftLogSegmentReader<E> createReader() {
     checkOpen();
-    return new RaftLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
+    RaftLogSegmentReader<E> reader = new RaftLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
+    readers.add(reader);
+    return reader;
   }
 
   /**
@@ -205,6 +210,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
   @Override
   public void close() {
     writer.close();
+    readers.forEach(reader -> reader.close());
     descriptor.close();
     open = false;
   }
