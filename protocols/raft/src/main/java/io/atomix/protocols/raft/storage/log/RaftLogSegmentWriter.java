@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
 
+import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.storage.StorageException;
 import io.atomix.storage.buffer.Buffer;
 import io.atomix.storage.buffer.Bytes;
@@ -22,7 +23,6 @@ import io.atomix.storage.buffer.FileBuffer;
 import io.atomix.storage.buffer.HeapBuffer;
 import io.atomix.storage.buffer.MappedBuffer;
 import io.atomix.storage.buffer.SlicedBuffer;
-import io.atomix.storage.journal.index.JournalIndex;
 import io.atomix.utils.serializer.Serializer;
 
 import java.nio.BufferOverflowException;
@@ -44,22 +44,22 @@ import java.util.zip.Checksum;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class JournalSegmentWriter<E> implements JournalWriter<E> {
-  private final JournalSegmentDescriptor descriptor;
+public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
+  private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
-  private final JournalSegmentCache cache;
-  private final JournalIndex index;
+  private final RaftLogSegmentCache cache;
+  private final RaftLogIndex index;
   private final Buffer buffer;
   private final Serializer serializer;
   private final Buffer memory = HeapBuffer.allocate().flip();
   private final long firstIndex;
   private Indexed<E> lastEntry;
 
-  public JournalSegmentWriter(
-      JournalSegmentDescriptor descriptor,
+  public RaftLogSegmentWriter(
+      RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
-      JournalSegmentCache cache,
-      JournalIndex index,
+      RaftLogSegmentCache cache,
+      RaftLogIndex index,
       Serializer serializer) {
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;

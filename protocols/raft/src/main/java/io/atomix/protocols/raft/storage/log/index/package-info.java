@@ -13,35 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal.index;
-
-import static com.google.common.base.MoreObjects.toStringHelper;
 
 /**
- * Journal index position.
+ * Provides classes and interfaces for efficiently managing journal indexes.
  */
-public class Position {
-  private final long index;
-  private final int position;
-
-  public Position(long index, int position) {
-    this.index = index;
-    this.position = position;
-  }
-
-  public long index() {
-    return index;
-  }
-
-  public int position() {
-    return position;
-  }
-
-  @Override
-  public String toString() {
-    return toStringHelper(this)
-        .add("index", index)
-        .add("position", position)
-        .toString();
-  }
-}
+package io.atomix.protocols.raft.storage.log.index;

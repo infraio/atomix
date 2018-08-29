@@ -15,8 +15,8 @@
  */
 package io.atomix.protocols.raft.cluster.impl;
 
-import io.atomix.protocols.raft.storage.log.RaftLog;
-import io.atomix.protocols.raft.storage.log.RaftLogReader;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLog;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLogReader;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -45,7 +45,7 @@ public final class RaftMemberContext {
   private boolean installing;
   private int failures;
   private long failureTime;
-  private volatile RaftLogReader reader;
+  private volatile SegmentedRaftLogReader reader;
   private final DescriptiveStatistics timeStats = new DescriptiveStatistics(APPEND_WINDOW_SIZE);
 
   RaftMemberContext(DefaultRaftMember member, RaftClusterContext cluster) {
@@ -55,7 +55,7 @@ public final class RaftMemberContext {
   /**
    * Resets the member state.
    */
-  public void resetState(RaftLog log) {
+  public void resetState(SegmentedRaftLog log) {
     snapshotIndex = 0;
     nextSnapshotIndex = 0;
     nextSnapshotOffset = 0;
@@ -72,11 +72,11 @@ public final class RaftMemberContext {
 
     switch (member.getType()) {
       case PASSIVE:
-        reader = log.openReader(log.writer().getLastIndex() + 1, RaftLogReader.Mode.COMMITS);
+        reader = log.openReader(log.writer().getLastIndex() + 1, SegmentedRaftLogReader.Mode.COMMITS);
         break;
       case PROMOTABLE:
       case ACTIVE:
-        reader = log.openReader(log.writer().getLastIndex() + 1, RaftLogReader.Mode.ALL);
+        reader = log.openReader(log.writer().getLastIndex() + 1, SegmentedRaftLogReader.Mode.ALL);
         break;
     }
   }
@@ -95,7 +95,7 @@ public final class RaftMemberContext {
    *
    * @return The member log reader.
    */
-  public RaftLogReader getLogReader() {
+  public SegmentedRaftLogReader getLogReader() {
     return reader;
   }
 
@@ -396,7 +396,7 @@ public final class RaftMemberContext {
 
   @Override
   public String toString() {
-    RaftLogReader reader = this.reader;
+    SegmentedRaftLogReader reader = this.reader;
     return toStringHelper(this)
         .add("member", member.memberId())
         .add("term", term)

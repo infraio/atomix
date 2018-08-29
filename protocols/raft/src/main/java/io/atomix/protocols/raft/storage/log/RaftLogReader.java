@@ -15,59 +15,64 @@
  */
 package io.atomix.protocols.raft.storage.log;
 
-import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
-import io.atomix.storage.journal.DelegatingJournalReader;
-import io.atomix.storage.journal.SegmentedJournalReader;
+import java.util.Iterator;
 
 /**
- * Raft log reader.
+ * Log reader.
+ *
+ * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class RaftLogReader extends DelegatingJournalReader<RaftLogEntry> {
+public interface RaftLogReader<E> extends Iterator<Indexed<E>>, AutoCloseable {
 
   /**
-   * Raft log reader mode.
-   */
-  public enum Mode {
-
-    /**
-     * Reads all entries from the log.
-     */
-    ALL,
-
-    /**
-     * Reads committed entries from the log.
-     */
-    COMMITS,
-  }
-
-  private final SegmentedJournalReader<RaftLogEntry> reader;
-  private final RaftLog log;
-  private final Mode mode;
-
-  public RaftLogReader(SegmentedJournalReader<RaftLogEntry> reader, RaftLog log, Mode mode) {
-    super(reader);
-    this.reader = reader;
-    this.log = log;
-    this.mode = mode;
-  }
-
-  /**
-   * Returns the first index in the journal.
+   * Returns the current reader index.
    *
-   * @return the first index in the journal
+   * @return The current reader index.
    */
-  public long getFirstIndex() {
-    return reader.getFirstIndex();
-  }
+  long getCurrentIndex();
+
+  /**
+   * Returns the last read entry.
+   *
+   * @return The last read entry.
+   */
+  Indexed<E> getCurrentEntry();
+
+  /**
+   * Returns the next reader index.
+   *
+   * @return The next reader index.
+   */
+  long getNextIndex();
+
+  /**
+   * Returns whether the reader has a next entry to read.
+   *
+   * @return Whether the reader has a next entry to read.
+   */
+  @Override
+  boolean hasNext();
+
+  /**
+   * Returns the next entry in the reader.
+   *
+   * @return The next entry in the reader.
+   */
+  @Override
+  Indexed<E> next();
+
+  /**
+   * Resets the reader to the start.
+   */
+  void reset();
+
+  /**
+   * Resets the reader to the given index.
+   *
+   * @param index The index to which to reset the reader.
+   */
+  void reset(long index);
 
   @Override
-  public boolean hasNext() {
-    if (mode == Mode.ALL) {
-      return super.hasNext();
-    }
-
-    long nextIndex = getNextIndex();
-    long commitIndex = log.getCommitIndex();
-    return nextIndex <= commitIndex && super.hasNext();
-  }
+  void close();
 }

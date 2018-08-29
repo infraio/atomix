@@ -43,9 +43,9 @@ import io.atomix.protocols.raft.roles.PromotableRole;
 import io.atomix.protocols.raft.roles.RaftRole;
 import io.atomix.protocols.raft.session.RaftSessionRegistry;
 import io.atomix.protocols.raft.storage.RaftStorage;
-import io.atomix.protocols.raft.storage.log.RaftLog;
-import io.atomix.protocols.raft.storage.log.RaftLogReader;
-import io.atomix.protocols.raft.storage.log.RaftLogWriter;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLog;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLogReader;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLogWriter;
 import io.atomix.protocols.raft.storage.snapshot.SnapshotStore;
 import io.atomix.protocols.raft.storage.system.MetaStore;
 import io.atomix.protocols.raft.utils.LoadMonitor;
@@ -98,9 +98,9 @@ public class RaftContext implements AutoCloseable {
   private final LoadMonitor loadMonitor;
   private volatile State state = State.ACTIVE;
   private final MetaStore meta;
-  private final RaftLog raftLog;
-  private final RaftLogWriter logWriter;
-  private final RaftLogReader logReader;
+  private final SegmentedRaftLog raftLog;
+  private final SegmentedRaftLogWriter logWriter;
+  private final SegmentedRaftLogReader logReader;
   private final SnapshotStore snapshotStore;
   private final RaftServiceManager stateMachine;
   private final ThreadContextFactory threadContextFactory;
@@ -160,7 +160,7 @@ public class RaftContext implements AutoCloseable {
     // Construct the core log, reader, writer, and compactor.
     this.raftLog = storage.openLog();
     this.logWriter = raftLog.writer();
-    this.logReader = raftLog.openReader(1, RaftLogReader.Mode.ALL);
+    this.logReader = raftLog.openReader(1, SegmentedRaftLogReader.Mode.ALL);
 
     // Open the snapshot store.
     this.snapshotStore = storage.openSnapshotStore();
@@ -620,7 +620,7 @@ public class RaftContext implements AutoCloseable {
    *
    * @return The server log.
    */
-  public RaftLog getLog() {
+  public SegmentedRaftLog getLog() {
     return raftLog;
   }
 
@@ -629,7 +629,7 @@ public class RaftContext implements AutoCloseable {
    *
    * @return The log writer.
    */
-  public RaftLogWriter getLogWriter() {
+  public SegmentedRaftLogWriter getLogWriter() {
     return logWriter;
   }
 
@@ -638,7 +638,7 @@ public class RaftContext implements AutoCloseable {
    *
    * @return The log reader.
    */
-  public RaftLogReader getLogReader() {
+  public SegmentedRaftLogReader getLogReader() {
     return logReader;
   }
 

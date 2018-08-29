@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
 
 import java.io.File;
 
@@ -24,7 +24,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public final class JournalSegmentFile {
+public final class RaftLogSegmentFile {
   private static final char PART_SEPARATOR = '-';
   private static final char EXTENSION_SEPARATOR = '.';
   private static final String EXTENSION = "log";
@@ -79,7 +79,7 @@ public final class JournalSegmentFile {
   /**
    * @throws IllegalArgumentException if {@code file} is not a valid segment file
    */
-  JournalSegmentFile(File file) {
+  RaftLogSegmentFile(File file) {
     this.file = file;
   }
 

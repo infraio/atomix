@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
 
-import io.atomix.storage.journal.index.JournalIndex;
-import io.atomix.storage.journal.index.SparseJournalIndex;
+import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
+import io.atomix.protocols.raft.storage.log.index.SparseRaftLogIndex;
 import io.atomix.utils.serializer.Serializer;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -27,19 +27,19 @@ import static com.google.common.base.Preconditions.checkState;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class JournalSegment<E> implements AutoCloseable {
-  protected final JournalSegmentFile file;
-  protected final JournalSegmentDescriptor descriptor;
+public class RaftLogSegment<E> implements AutoCloseable {
+  protected final RaftLogSegmentFile file;
+  protected final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
-  protected final JournalIndex index;
+  protected final RaftLogIndex index;
   protected final Serializer serializer;
-  private final JournalSegmentWriter<E> writer;
-  private final JournalSegmentCache cache;
+  private final RaftLogSegmentWriter<E> writer;
+  private final RaftLogSegmentCache cache;
   private boolean open = true;
 
-  public JournalSegment(
-      JournalSegmentFile file,
-      JournalSegmentDescriptor descriptor,
+  public RaftLogSegment(
+      RaftLogSegmentFile file,
+      RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
       double indexDensity,
       int cacheSize,
@@ -47,10 +47,10 @@ public class JournalSegment<E> implements AutoCloseable {
     this.file = file;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
-    this.index = new SparseJournalIndex(indexDensity);
+    this.index = new SparseRaftLogIndex(indexDensity);
     this.serializer = serializer;
-    this.cache = new JournalSegmentCache(descriptor.index(), cacheSize);
-    this.writer = new JournalSegmentWriter<>(descriptor, maxEntrySize, cache, index, serializer);
+    this.cache = new RaftLogSegmentCache(descriptor.index(), cacheSize);
+    this.writer = new RaftLogSegmentWriter<>(descriptor, maxEntrySize, cache, index, serializer);
   }
 
   /**
@@ -94,7 +94,7 @@ public class JournalSegment<E> implements AutoCloseable {
    *
    * @return The segment file.
    */
-  public JournalSegmentFile file() {
+  public RaftLogSegmentFile file() {
     return file;
   }
 
@@ -103,7 +103,7 @@ public class JournalSegment<E> implements AutoCloseable {
    *
    * @return The segment descriptor.
    */
-  public JournalSegmentDescriptor descriptor() {
+  public RaftLogSegmentDescriptor descriptor() {
     return descriptor;
   }
 
@@ -148,7 +148,7 @@ public class JournalSegment<E> implements AutoCloseable {
    *
    * @return The segment writer.
    */
-  public JournalSegmentWriter<E> writer() {
+  public RaftLogSegmentWriter<E> writer() {
     checkOpen();
     return writer;
   }
@@ -158,9 +158,9 @@ public class JournalSegment<E> implements AutoCloseable {
    *
    * @return A new segment reader.
    */
-  JournalSegmentReader<E> createReader() {
+  RaftLogSegmentReader<E> createReader() {
     checkOpen();
-    return new JournalSegmentReader<>(descriptor, maxEntrySize, cache, index, serializer);
+    return new RaftLogSegmentReader<>(descriptor, maxEntrySize, cache, index, serializer);
   }
 
   /**

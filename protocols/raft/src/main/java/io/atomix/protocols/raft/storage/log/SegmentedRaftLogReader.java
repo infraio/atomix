@@ -13,23 +13,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
+
+import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 
 import java.util.NoSuchElementException;
 
 /**
- * Segmented journal reader.
- *
- * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
+ * Raft log reader.
  */
-public class SegmentedJournalReader<E> implements JournalReader<E> {
-  private final SegmentedJournal<E> journal;
-  private JournalSegment<E> currentSegment;
-  private Indexed<E> previousEntry;
-  private JournalSegmentReader<E> currentReader;
+public class SegmentedRaftLogReader implements RaftLogReader<RaftLogEntry> {
 
-  public SegmentedJournalReader(SegmentedJournal<E> journal, long index) {
-    this.journal = journal;
+  /**
+   * Raft log reader mode.
+   */
+  public enum Mode {
+
+    /**
+     * Reads all entries from the log.
+     */
+    ALL,
+
+    /**
+     * Reads committed entries from the log.
+     */
+    COMMITS,
+  }
+
+  private final SegmentedRaftLog log;
+  private RaftLogSegment<RaftLogEntry> currentSegment;
+  private Indexed<RaftLogEntry> previousEntry;
+  private RaftLogSegmentReader<RaftLogEntry> currentReader;
+  private final Mode mode;
+
+  public SegmentedRaftLogReader(SegmentedRaftLog log, long index, Mode mode) {
+    this.log = log;
+    this.mode = mode;
     initialize(index);
   }
 
@@ -37,7 +56,7 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
    * Initializes the reader to the given index.
    */
   private void initialize(long index) {
-    currentSegment = journal.getSegment(index);
+    currentSegment = log.getSegment(index);
     currentReader = currentSegment.createReader();
     long nextIndex = getNextIndex();
     while (index > nextIndex && hasNext()) {
@@ -52,7 +71,7 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
    * @return the first index in the journal
    */
   public long getFirstIndex() {
-    return journal.getFirstSegment().index();
+    return log.getFirstSegment().index();
   }
 
   @Override
@@ -68,8 +87,8 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
   }
 
   @Override
-  public Indexed<E> getCurrentEntry() {
-    Indexed<E> currentEntry = currentReader.getCurrentEntry();
+  public Indexed<RaftLogEntry> getCurrentEntry() {
+    Indexed<RaftLogEntry> currentEntry = currentReader.getCurrentEntry();
     if (currentEntry != null) {
       return currentEntry;
     }
@@ -84,7 +103,7 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
   @Override
   public void reset() {
     currentReader.close();
-    currentSegment = journal.getFirstSegment();
+    currentSegment = log.getFirstSegment();
     currentReader = currentSegment.createReader();
     previousEntry = null;
   }
@@ -110,7 +129,7 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
    */
   private void rewind(long index) {
     if (currentSegment.index() >= index) {
-      JournalSegment<E> segment = journal.getSegment(index - 1);
+      RaftLogSegment<RaftLogEntry> segment = log.getSegment(index - 1);
       if (segment != null) {
         currentReader.close();
         currentSegment = segment;
@@ -133,8 +152,18 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
 
   @Override
   public boolean hasNext() {
+    if (mode == Mode.ALL) {
+      return hasNextEntry();
+    }
+
+    long nextIndex = getNextIndex();
+    long commitIndex = log.getCommitIndex();
+    return nextIndex <= commitIndex && hasNextEntry();
+  }
+
+  private boolean hasNextEntry() {
     if (!currentReader.hasNext()) {
-      JournalSegment<E> nextSegment = journal.getNextSegment(currentSegment.index());
+      RaftLogSegment<RaftLogEntry> nextSegment = log.getNextSegment(currentSegment.index());
       if (nextSegment != null && nextSegment.index() == getNextIndex()) {
         previousEntry = currentReader.getCurrentEntry();
         currentSegment = nextSegment;
@@ -147,9 +176,9 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
   }
 
   @Override
-  public Indexed<E> next() {
+  public Indexed<RaftLogEntry> next() {
     if (!currentReader.hasNext()) {
-      JournalSegment<E> nextSegment = journal.getNextSegment(currentSegment.index());
+      RaftLogSegment<RaftLogEntry> nextSegment = log.getNextSegment(currentSegment.index());
       if (nextSegment != null && nextSegment.index() == getNextIndex()) {
         previousEntry = currentReader.getCurrentEntry();
         currentSegment = nextSegment;
@@ -167,6 +196,6 @@ public class SegmentedJournalReader<E> implements JournalReader<E> {
   @Override
   public void close() {
     currentReader.close();
-    journal.closeReader(this);
+    log.closeReader(this);
   }
 }

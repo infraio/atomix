@@ -15,51 +15,61 @@
  */
 package io.atomix.protocols.raft.storage.log;
 
-import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
-import io.atomix.storage.journal.DelegatingJournalWriter;
-import io.atomix.storage.journal.SegmentedJournalWriter;
-
 /**
- * Raft log writer.
+ * Log writer.
+ *
+ * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class RaftLogWriter extends DelegatingJournalWriter<RaftLogEntry> {
-  private final SegmentedJournalWriter<RaftLogEntry> writer;
-  private final RaftLog log;
-
-  public RaftLogWriter(SegmentedJournalWriter<RaftLogEntry> writer, RaftLog log) {
-    super(writer);
-    this.writer = writer;
-    this.log = log;
-  }
+public interface RaftLogWriter<E> extends AutoCloseable {
 
   /**
-   * Resets the head of the log to the given index.
+   * Returns the last written index.
    *
-   * @param index the index to which to reset the head of the log
+   * @return The last written index.
    */
-  public void reset(long index) {
-    writer.reset(index);
-  }
+  long getLastIndex();
 
   /**
-   * Commits entries up to the given index.
+   * Returns the last entry written.
    *
-   * @param index The index up to which to commit entries.
+   * @return The last entry written.
    */
-  public void commit(long index) {
-    if (index > log.getCommitIndex()) {
-      log.setCommitIndex(index);
-      if (log.isFlushOnCommit()) {
-        flush();
-      }
-    }
-  }
+  Indexed<E> getLastEntry();
+
+  /**
+   * Returns the next index to be written.
+   *
+   * @return The next index to be written.
+   */
+  long getNextIndex();
+
+  /**
+   * Appends an entry to the journal.
+   *
+   * @param entry The entry to append.
+   * @return The appended indexed entry.
+   */
+  <T extends E> Indexed<T> append(T entry);
+
+  /**
+   * Appends an indexed entry to the log.
+   *
+   * @param entry The indexed entry to append.
+   */
+  void append(Indexed<E> entry);
+
+  /**
+   * Truncates the log to the given index.
+   *
+   * @param index The index to which to truncate the log.
+   */
+  void truncate(long index);
+
+  /**
+   * Flushes written entries to disk.
+   */
+  void flush();
 
   @Override
-  public void truncate(long index) {
-    if (index < log.getCommitIndex()) {
-      throw new IndexOutOfBoundsException("Cannot truncate committed index: " + index);
-    }
-    super.truncate(index);
-  }
+  void close();
 }

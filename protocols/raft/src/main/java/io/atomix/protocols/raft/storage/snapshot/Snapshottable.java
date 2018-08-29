@@ -16,7 +16,7 @@
 package io.atomix.protocols.raft.storage.snapshot;
 
 import io.atomix.primitive.service.PrimitiveService;
-import io.atomix.protocols.raft.storage.log.RaftLog;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLog;
 
 /**
  * Support for periodically persisting {@link PrimitiveService} snapshots to disk.
@@ -68,7 +68,7 @@ public interface Snapshottable {
   /**
    * Takes a snapshot of the state machine state.
    * <p>
-   * This method will be called each time the underlying {@link RaftLog Log}
+   * This method will be called each time the underlying {@link SegmentedRaftLog Log}
    * rotates segments. Once the snapshot has been written, the snapshot will be stored on disk and eventually
    * completed. Note that snapshots are normally not immediately completed upon completion of this method as
    * servers must wait for certain conditions to be met before persisting a snapshot. Therefore, state machines

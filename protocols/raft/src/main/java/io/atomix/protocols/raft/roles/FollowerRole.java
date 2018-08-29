@@ -33,7 +33,7 @@ import io.atomix.protocols.raft.protocol.VoteRequest;
 import io.atomix.protocols.raft.protocol.VoteResponse;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.protocols.raft.utils.Quorum;
-import io.atomix.storage.journal.Indexed;
+import io.atomix.protocols.raft.storage.log.Indexed;
 import io.atomix.utils.concurrent.Scheduled;
 
 import java.time.Duration;

@@ -26,7 +26,7 @@ import io.atomix.protocols.raft.protocol.RaftResponse;
 import io.atomix.protocols.raft.protocol.VoteRequest;
 import io.atomix.protocols.raft.protocol.VoteResponse;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
-import io.atomix.storage.journal.Indexed;
+import io.atomix.protocols.raft.storage.log.Indexed;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;

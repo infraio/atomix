@@ -17,7 +17,6 @@ package io.atomix.protocols.raft.storage.log;
 
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.storage.StorageLevel;
-import io.atomix.storage.journal.Indexed;
 import io.atomix.utils.serializer.Namespace;
 import io.atomix.utils.serializer.Serializer;
 import org.junit.After;
@@ -34,11 +33,8 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -84,8 +80,8 @@ public abstract class AbstractLogTest {
     return runs;
   }
 
-  protected RaftLog createLog() {
-    return RaftLog.builder()
+  protected SegmentedRaftLog createLog() {
+    return SegmentedRaftLog.builder()
         .withName("test")
         .withDirectory(PATH.toFile())
         .withSerializer(SERIALIZER)
@@ -99,9 +95,9 @@ public abstract class AbstractLogTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testLogWriteRead() throws Exception {
-    try (RaftLog log = createLog()) {
-      RaftLogWriter writer = log.writer();
-      RaftLogReader reader = log.openReader(1, RaftLogReader.Mode.ALL);
+    try (SegmentedRaftLog log = createLog()) {
+      SegmentedRaftLogWriter writer = log.writer();
+      SegmentedRaftLogReader reader = log.openReader(1, SegmentedRaftLogReader.Mode.ALL);
 
       // Append a couple entries.
       Indexed<RaftLogEntry> indexed;
@@ -137,7 +133,7 @@ public abstract class AbstractLogTest {
       assertFalse(reader.hasNext());
 
       // Test opening a new reader and reading from the log.
-      reader = log.openReader(1, RaftLogReader.Mode.ALL);
+      reader = log.openReader(1, SegmentedRaftLogReader.Mode.ALL);
       assertTrue(reader.hasNext());
       entry1 = (Indexed) reader.next();
       assertEquals(1, entry1.index());
@@ -159,7 +155,7 @@ public abstract class AbstractLogTest {
       reader.reset();
 
       // Test opening a new reader and reading from the log.
-      reader = log.openReader(1, RaftLogReader.Mode.ALL);
+      reader = log.openReader(1, SegmentedRaftLogReader.Mode.ALL);
       assertTrue(reader.hasNext());
       entry1 = (Indexed) reader.next();
       assertEquals(1, entry1.index());
@@ -205,9 +201,9 @@ public abstract class AbstractLogTest {
 
   @Test
   public void testResetTruncateZero() throws Exception {
-    try (RaftLog log = createLog()) {
-      RaftLogWriter writer = log.writer();
-      RaftLogReader reader = log.openReader(1, RaftLogReader.Mode.ALL);
+    try (SegmentedRaftLog log = createLog()) {
+      SegmentedRaftLogWriter writer = log.writer();
+      SegmentedRaftLogReader reader = log.openReader(1, SegmentedRaftLogReader.Mode.ALL);
 
       assertEquals(0, writer.getLastIndex());
       writer.append(ENTRY);
@@ -240,9 +236,9 @@ public abstract class AbstractLogTest {
   @Test
   public void testTruncateRead() throws Exception {
     int i = 10;
-    try (RaftLog log = createLog()) {
-      RaftLogWriter writer = log.writer();
-      RaftLogReader reader = log.openReader(1);
+    try (SegmentedRaftLog log = createLog()) {
+      SegmentedRaftLogWriter writer = log.writer();
+      SegmentedRaftLogReader reader = log.openReader(1);
 
       long term = 0;
 
@@ -275,9 +271,9 @@ public abstract class AbstractLogTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testWriteReadEntries() throws Exception {
-    try (RaftLog log = createLog()) {
-      RaftLogWriter writer = log.writer();
-      RaftLogReader reader = log.openReader(1, RaftLogReader.Mode.ALL);
+    try (SegmentedRaftLog log = createLog()) {
+      SegmentedRaftLogWriter writer = log.writer();
+      SegmentedRaftLogReader reader = log.openReader(1, SegmentedRaftLogReader.Mode.ALL);
 
       for (int i = 1; i <= entriesPerSegment * 5; i++) {
         writer.append(ENTRY);
@@ -319,9 +315,9 @@ public abstract class AbstractLogTest {
   @Test
   @SuppressWarnings("unchecked")
   public void testWriteReadCommittedEntries() throws Exception {
-    try (RaftLog log = createLog()) {
-      RaftLogWriter writer = log.writer();
-      RaftLogReader reader = log.openReader(1, RaftLogReader.Mode.COMMITS);
+    try (SegmentedRaftLog log = createLog()) {
+      SegmentedRaftLogWriter writer = log.writer();
+      SegmentedRaftLogReader reader = log.openReader(1, SegmentedRaftLogReader.Mode.COMMITS);
 
       for (int i = 1; i <= entriesPerSegment * 5; i++) {
         writer.append(ENTRY);
@@ -344,10 +340,10 @@ public abstract class AbstractLogTest {
 
   @Test
   public void testReadAfterCompact() throws Exception {
-    try (RaftLog log = createLog()) {
-      RaftLogWriter writer = log.writer();
-      RaftLogReader uncommittedReader = log.openReader(1, RaftLogReader.Mode.ALL);
-      RaftLogReader committedReader = log.openReader(1, RaftLogReader.Mode.COMMITS);
+    try (SegmentedRaftLog log = createLog()) {
+      SegmentedRaftLogWriter writer = log.writer();
+      SegmentedRaftLogReader uncommittedReader = log.openReader(1, SegmentedRaftLogReader.Mode.ALL);
+      SegmentedRaftLogReader committedReader = log.openReader(1, SegmentedRaftLogReader.Mode.COMMITS);
 
       for (int i = 1; i <= entriesPerSegment * 10; i++) {
         assertEquals(i, writer.append(ENTRY).index());

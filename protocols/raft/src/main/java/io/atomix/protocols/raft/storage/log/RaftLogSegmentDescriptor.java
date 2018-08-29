@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.atomix.storage.buffer.Buffer;
@@ -26,7 +26,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
- * Stores information about a {@link JournalSegment} of the log.
+ * Stores information about a {@link RaftLogSegment} of the log.
  * <p>
  * The segment descriptor manages metadata related to a single segment of the log. Descriptors are stored within the
  * first {@code 64} bytes of each segment in the following order:
@@ -54,7 +54,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public final class JournalSegmentDescriptor implements AutoCloseable {
+public final class RaftLogSegmentDescriptor implements AutoCloseable {
   public static final int BYTES = 64;
 
   // Current segment version.
@@ -111,7 +111,7 @@ public final class JournalSegmentDescriptor implements AutoCloseable {
   /**
    * @throws NullPointerException if {@code buffer} is null
    */
-  public JournalSegmentDescriptor(Buffer buffer) {
+  public RaftLogSegmentDescriptor(Buffer buffer) {
     this.buffer = checkNotNull(buffer, "buffer cannot be null");
     this.version = buffer.readInt();
     this.id = buffer.readLong();
@@ -211,7 +211,7 @@ public final class JournalSegmentDescriptor implements AutoCloseable {
   /**
    * Copies the segment to a new buffer.
    */
-  JournalSegmentDescriptor copyTo(Buffer buffer) {
+  RaftLogSegmentDescriptor copyTo(Buffer buffer) {
     this.buffer = buffer
         .writeInt(version)
         .writeLong(id)
@@ -313,8 +313,8 @@ public final class JournalSegmentDescriptor implements AutoCloseable {
      *
      * @return The built segment descriptor.
      */
-    public JournalSegmentDescriptor build() {
-      return new JournalSegmentDescriptor(buffer.rewind());
+    public RaftLogSegmentDescriptor build() {
+      return new RaftLogSegmentDescriptor(buffer.rewind());
     }
   }
 }

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -23,13 +23,13 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 /**
  * Journal segment cache.
  */
-class JournalSegmentCache {
+class RaftLogSegmentCache {
   private final int size;
   private final Map<Long, Indexed> entries;
   private long firstIndex;
   private long lastIndex;
 
-  JournalSegmentCache(long index, int size) {
+  RaftLogSegmentCache(long index, int size) {
     this.size = size;
     this.entries = new HashMap<>(size);
     this.firstIndex = index;

@@ -13,23 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
+
+import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 
 import java.nio.BufferOverflowException;
 
 /**
- * Log writer.
- *
- * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
+ * Raft log writer.
  */
-public class SegmentedJournalWriter<E> implements JournalWriter<E> {
-  private final SegmentedJournal<E> journal;
-  private JournalSegment<E> currentSegment;
-  private JournalSegmentWriter<E> currentWriter;
+public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
+  private final SegmentedRaftLog log;
+  private RaftLogSegment<RaftLogEntry> currentSegment;
+  private RaftLogSegmentWriter<RaftLogEntry> currentWriter;
 
-  public SegmentedJournalWriter(SegmentedJournal<E> journal) {
-    this.journal = journal;
-    this.currentSegment = journal.getLastSegment();
+  public SegmentedRaftLogWriter(SegmentedRaftLog log) {
+    this.log = log;
+    this.currentSegment = log.getLastSegment();
     this.currentWriter = currentSegment.writer();
   }
 
@@ -39,7 +39,7 @@ public class SegmentedJournalWriter<E> implements JournalWriter<E> {
   }
 
   @Override
-  public Indexed<E> getLastEntry() {
+  public Indexed<RaftLogEntry> getLastEntry() {
     return currentWriter.getLastEntry();
   }
 
@@ -56,20 +56,34 @@ public class SegmentedJournalWriter<E> implements JournalWriter<E> {
   public void reset(long index) {
     if (index > currentWriter.firstIndex()) {
       currentWriter.close();
-      currentSegment = journal.resetSegments(index);
+      currentSegment = log.resetSegments(index);
       currentWriter = currentSegment.writer();
-      journal.resetHead(index);
+      log.resetHead(index);
     } else {
       truncate(index - 1);
     }
   }
 
+  /**
+   * Commits entries up to the given index.
+   *
+   * @param index The index up to which to commit entries.
+   */
+  public void commit(long index) {
+    if (index > log.getCommitIndex()) {
+      log.setCommitIndex(index);
+      if (log.isFlushOnCommit()) {
+        flush();
+      }
+    }
+  }
+
   @Override
-  public <T extends E> Indexed<T> append(T entry) {
+  public <T extends RaftLogEntry> Indexed<T> append(T entry) {
     try {
       if (currentWriter.isFull()) {
         currentWriter.flush();
-        currentSegment = journal.getNextSegment();
+        currentSegment = log.getNextSegment();
         currentWriter = currentSegment.writer();
       }
       return currentWriter.append(entry);
@@ -78,18 +92,18 @@ public class SegmentedJournalWriter<E> implements JournalWriter<E> {
         throw e;
       }
       currentWriter.flush();
-      currentSegment = journal.getNextSegment();
+      currentSegment = log.getNextSegment();
       currentWriter = currentSegment.writer();
       return currentWriter.append(entry);
     }
   }
 
   @Override
-  public void append(Indexed<E> entry) {
+  public void append(Indexed<RaftLogEntry> entry) {
     try {
       if (currentWriter.isFull()) {
         currentWriter.flush();
-        currentSegment = journal.getNextSegment();
+        currentSegment = log.getNextSegment();
         currentWriter = currentSegment.writer();
       }
       currentWriter.append(entry);
@@ -98,7 +112,7 @@ public class SegmentedJournalWriter<E> implements JournalWriter<E> {
         throw e;
       }
       currentWriter.flush();
-      currentSegment = journal.getNextSegment();
+      currentSegment = log.getNextSegment();
       currentWriter = currentSegment.writer();
       currentWriter.append(entry);
     }
@@ -106,11 +120,15 @@ public class SegmentedJournalWriter<E> implements JournalWriter<E> {
 
   @Override
   public void truncate(long index) {
+    if (index < log.getCommitIndex()) {
+      throw new IndexOutOfBoundsException("Cannot truncate committed index: " + index);
+    }
+
     // Delete all segments with first indexes greater than the given index.
     while (index < currentWriter.firstIndex() - 1) {
       currentWriter.close();
-      journal.removeSegment(currentSegment);
-      currentSegment = journal.getLastSegment();
+      log.removeSegment(currentSegment);
+      currentSegment = log.getLastSegment();
       currentWriter = currentSegment.writer();
     }
 
@@ -118,7 +136,7 @@ public class SegmentedJournalWriter<E> implements JournalWriter<E> {
     currentWriter.truncate(index);
 
     // Reset segment readers.
-    journal.resetTail(index + 1);
+    log.resetTail(index + 1);
   }
 
   @Override

@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
 
+import io.atomix.protocols.raft.storage.log.index.Position;
+import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.storage.buffer.Buffer;
 import io.atomix.storage.buffer.Bytes;
 import io.atomix.storage.buffer.HeapBuffer;
-import io.atomix.storage.journal.index.JournalIndex;
-import io.atomix.storage.journal.index.Position;
 import io.atomix.utils.serializer.Serializer;
 
 import java.nio.BufferUnderflowException;
@@ -32,22 +32,22 @@ import java.util.zip.Checksum;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class JournalSegmentReader<E> implements JournalReader<E> {
+public class RaftLogSegmentReader<E> implements RaftLogReader<E> {
   private final Buffer buffer;
   private final int maxEntrySize;
-  private final JournalSegmentCache cache;
-  private final JournalIndex index;
+  private final RaftLogSegmentCache cache;
+  private final RaftLogIndex index;
   private final Serializer serializer;
   private final Buffer memory = HeapBuffer.allocate().flip();
   private final long firstIndex;
   private Indexed<E> currentEntry;
   private Indexed<E> nextEntry;
 
-  public JournalSegmentReader(
-      JournalSegmentDescriptor descriptor,
+  public RaftLogSegmentReader(
+      RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
-      JournalSegmentCache cache,
-      JournalIndex index,
+      RaftLogSegmentCache cache,
+      RaftLogIndex index,
       Serializer serializer) {
     this.buffer = descriptor.buffer().slice().duplicate();
     this.maxEntrySize = maxEntrySize;

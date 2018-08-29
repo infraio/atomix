@@ -25,7 +25,7 @@ import io.atomix.protocols.raft.cluster.RaftMember;
 import io.atomix.protocols.raft.impl.DefaultRaftServer;
 import io.atomix.protocols.raft.protocol.RaftServerProtocol;
 import io.atomix.protocols.raft.storage.RaftStorage;
-import io.atomix.protocols.raft.storage.log.RaftLog;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLog;
 import io.atomix.storage.StorageLevel;
 import io.atomix.utils.concurrent.ThreadModel;
 
@@ -72,7 +72,7 @@ import static io.atomix.protocols.raft.RaftException.ConfigurationException;
  * between stateful and stateless states.
  * <h2>Storage</h2>
  * As {@link OperationType#COMMAND}s are received by the server, they're written to the Raft
- * {@link RaftLog} and replicated to other members
+ * {@link SegmentedRaftLog} and replicated to other members
  * of the cluster. By default, the log is stored on disk, but users can override the default {@link RaftStorage} configuration
  * via {@link RaftServer.Builder#withStorage(RaftStorage)}. Most notably, to configure the storage module to store entries in
  * memory instead of disk, configure the {@link StorageLevel}.
@@ -251,7 +251,7 @@ public interface RaftServer {
    * Returns the server name.
    * <p>
    * The server name is provided to the server via the {@link Builder#withName(String) builder configuration}.
-   * The name is used internally to manage the server's on-disk state. {@link RaftLog Log},
+   * The name is used internally to manage the server's on-disk state. {@link SegmentedRaftLog Log},
    * {@link io.atomix.protocols.raft.storage.snapshot.SnapshotStore snapshot},
    * and {@link io.atomix.protocols.raft.storage.system.MetaStore configuration} files stored on disk use
    * the server name as the prefix.

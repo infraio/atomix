@@ -13,8 +13,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package io.atomix.protocols.raft.storage.log.index;
+
+import static com.google.common.base.MoreObjects.toStringHelper;
 
 /**
- * Provides a low-level journal abstraction for appending to logs and managing segmented logs.
+ * Journal index position.
  */
-package io.atomix.storage.journal;
+public class Position {
+  private final long index;
+  private final int position;
+
+  public Position(long index, int position) {
+    this.index = index;
+    this.position = position;
+  }
+
+  public long index() {
+    return index;
+  }
+
+  public int position() {
+    return position;
+  }
+
+  @Override
+  public String toString() {
+    return toStringHelper(this)
+        .add("index", index)
+        .add("position", position)
+        .toString();
+  }
+}

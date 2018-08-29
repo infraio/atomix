@@ -27,11 +27,11 @@ import io.atomix.protocols.raft.protocol.InstallRequest;
 import io.atomix.protocols.raft.protocol.InstallResponse;
 import io.atomix.protocols.raft.protocol.RaftRequest;
 import io.atomix.protocols.raft.protocol.RaftResponse;
-import io.atomix.protocols.raft.storage.log.RaftLogReader;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLogReader;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.protocols.raft.storage.snapshot.Snapshot;
 import io.atomix.protocols.raft.storage.snapshot.SnapshotReader;
-import io.atomix.storage.journal.Indexed;
+import io.atomix.protocols.raft.storage.log.Indexed;
 import io.atomix.utils.logging.ContextualLoggerFactory;
 import io.atomix.utils.logging.LoggerContext;
 import org.slf4j.Logger;
@@ -72,7 +72,7 @@ abstract class AbstractAppender implements AutoCloseable {
    * @return The append request.
    */
   protected AppendRequest buildAppendRequest(RaftMemberContext member, long lastIndex) {
-    final RaftLogReader reader = member.getLogReader();
+    final SegmentedRaftLogReader reader = member.getLogReader();
 
     // If the log is empty then send an empty commit.
     // If the next index hasn't yet been set then we send an empty commit first.
@@ -94,7 +94,7 @@ abstract class AbstractAppender implements AutoCloseable {
    * Empty append requests are used as heartbeats to followers.
    */
   protected AppendRequest buildAppendEmptyRequest(RaftMemberContext member) {
-    final RaftLogReader reader = member.getLogReader();
+    final SegmentedRaftLogReader reader = member.getLogReader();
 
     // Read the previous entry from the reader.
     // The reader can be null for RESERVE members.
@@ -116,7 +116,7 @@ abstract class AbstractAppender implements AutoCloseable {
    */
   @SuppressWarnings("unchecked")
   protected AppendRequest buildAppendEntriesRequest(RaftMemberContext member, long lastIndex) {
-    final RaftLogReader reader = member.getLogReader();
+    final SegmentedRaftLogReader reader = member.getLogReader();
 
     final Indexed<RaftLogEntry> prevEntry = reader.getCurrentEntry();
 

@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal;
+package io.atomix.protocols.raft.storage.log;
 
 import com.google.common.collect.Sets;
+import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.storage.StorageException;
 import io.atomix.storage.StorageLevel;
 import io.atomix.storage.buffer.Buffer;
@@ -28,6 +29,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.SortedMap;
@@ -39,19 +41,17 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 
 /**
- * Segmented journal implementation.
- *
- * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
+ * Raft log.
  */
-public class SegmentedJournal<E> implements Journal<E> {
+public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
 
   /**
-   * Returns a new segmented journal builder.
+   * Returns a new Raft log builder.
    *
-   * @return A new segmented journal builder.
+   * @return A new Raft log builder.
    */
-  public static <E> Builder<E> builder() {
-    return new Builder<>();
+  public static Builder builder() {
+    return new Builder();
   }
 
   private static final int DEFAULT_BUFFER_SIZE = 1024 * 64;
@@ -67,15 +67,17 @@ public class SegmentedJournal<E> implements Journal<E> {
   private final int maxEntriesPerSegment;
   private final double indexDensity;
   private final int cacheSize;
+  private final boolean flushOnCommit;
+  private final SegmentedRaftLogWriter writer;
+  private volatile long commitIndex;
 
-  private final NavigableMap<Long, JournalSegment<E>> segments = new ConcurrentSkipListMap<>();
-  private final Collection<SegmentedJournalReader<E>> readers = Sets.newConcurrentHashSet();
-  private JournalSegment<E> currentSegment;
+  private final NavigableMap<Long, RaftLogSegment<RaftLogEntry>> segments = new ConcurrentSkipListMap<>();
+  private final Collection<SegmentedRaftLogReader> readers = Sets.newConcurrentHashSet();
+  private RaftLogSegment<RaftLogEntry> currentSegment;
 
-  private final SegmentedJournalWriter<E> writer;
   private volatile boolean open = true;
 
-  public SegmentedJournal(
+  public SegmentedRaftLog(
       String name,
       StorageLevel storageLevel,
       File directory,
@@ -84,7 +86,8 @@ public class SegmentedJournal<E> implements Journal<E> {
       int maxEntrySize,
       int maxEntriesPerSegment,
       double indexDensity,
-      int cacheSize) {
+      int cacheSize,
+      boolean flushOnCommit) {
     this.name = checkNotNull(name, "name cannot be null");
     this.storageLevel = checkNotNull(storageLevel, "storageLevel cannot be null");
     this.directory = checkNotNull(directory, "directory cannot be null");
@@ -94,6 +97,7 @@ public class SegmentedJournal<E> implements Journal<E> {
     this.maxEntriesPerSegment = maxEntriesPerSegment;
     this.indexDensity = indexDensity;
     this.cacheSize = cacheSize;
+    this.flushOnCommit = flushOnCommit;
     open();
     this.writer = openWriter();
   }
@@ -167,13 +171,36 @@ public class SegmentedJournal<E> implements Journal<E> {
     return maxEntriesPerSegment;
   }
 
+  @Override
+  public SegmentedRaftLogWriter writer() {
+    return writer;
+  }
+
+  @Override
+  public SegmentedRaftLogReader openReader(long index) {
+    return openReader(index, SegmentedRaftLogReader.Mode.ALL);
+  }
+
+  /**
+   * Opens a new Raft log reader with the given reader mode.
+   *
+   * @param index The index from which to begin reading entries.
+   * @param mode The mode in which to read entries.
+   * @return The Raft log reader.
+   */
+  public SegmentedRaftLogReader openReader(long index, SegmentedRaftLogReader.Mode mode) {
+    SegmentedRaftLogReader reader = new SegmentedRaftLogReader(this, index, mode);
+    readers.add(reader);
+    return reader;
+  }
+
   /**
    * Opens a new journal writer.
    *
    * @return A new journal writer.
    */
-  protected SegmentedJournalWriter<E> openWriter() {
-    return new SegmentedJournalWriter<>(this);
+  protected SegmentedRaftLogWriter openWriter() {
+    return new SegmentedRaftLogWriter(this);
   }
 
   /**
@@ -181,7 +208,7 @@ public class SegmentedJournal<E> implements Journal<E> {
    */
   private void open() {
     // Load existing log segments from disk.
-    for (JournalSegment<E> segment : loadSegments()) {
+    for (RaftLogSegment<RaftLogEntry> segment : loadSegments()) {
       segments.put(segment.descriptor().index(), segment);
     }
 
@@ -189,7 +216,7 @@ public class SegmentedJournal<E> implements Journal<E> {
     if (!segments.isEmpty()) {
       currentSegment = segments.lastEntry().getValue();
     } else {
-      JournalSegmentDescriptor descriptor = JournalSegmentDescriptor.builder()
+      RaftLogSegmentDescriptor descriptor = RaftLogSegmentDescriptor.builder()
           .withId(1)
           .withIndex(1)
           .withMaxSegmentSize(maxSegmentSize)
@@ -225,11 +252,11 @@ public class SegmentedJournal<E> implements Journal<E> {
    * Resets the current segment, creating a new segment if necessary.
    */
   private synchronized void resetCurrentSegment() {
-    JournalSegment<E> lastSegment = getLastSegment();
+    RaftLogSegment<RaftLogEntry> lastSegment = getLastSegment();
     if (lastSegment != null) {
       currentSegment = lastSegment;
     } else {
-      JournalSegmentDescriptor descriptor = JournalSegmentDescriptor.builder()
+      RaftLogSegmentDescriptor descriptor = RaftLogSegmentDescriptor.builder()
           .withId(1)
           .withIndex(1)
           .withMaxSegmentSize(maxSegmentSize)
@@ -248,22 +275,22 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @param index the starting index of the journal
    * @return the first segment
    */
-  JournalSegment<E> resetSegments(long index) {
+  RaftLogSegment<RaftLogEntry> resetSegments(long index) {
     assertOpen();
 
     // If the index already equals the first segment index, skip the reset.
-    JournalSegment<E> firstSegment = getFirstSegment();
+    RaftLogSegment<RaftLogEntry> firstSegment = getFirstSegment();
     if (index == firstSegment.index()) {
       return firstSegment;
     }
 
-    for (JournalSegment<E> segment : segments.values()) {
+    for (RaftLogSegment<RaftLogEntry> segment : segments.values()) {
       segment.close();
       segment.delete();
     }
     segments.clear();
 
-    JournalSegmentDescriptor descriptor = JournalSegmentDescriptor.builder()
+    RaftLogSegmentDescriptor descriptor = RaftLogSegmentDescriptor.builder()
         .withId(1)
         .withIndex(index)
         .withMaxSegmentSize(maxSegmentSize)
@@ -279,9 +306,9 @@ public class SegmentedJournal<E> implements Journal<E> {
    *
    * @throws IllegalStateException if the segment manager is not open
    */
-  JournalSegment<E> getFirstSegment() {
+  RaftLogSegment<RaftLogEntry> getFirstSegment() {
     assertOpen();
-    Map.Entry<Long, JournalSegment<E>> segment = segments.firstEntry();
+    Map.Entry<Long, RaftLogSegment<RaftLogEntry>> segment = segments.firstEntry();
     return segment != null ? segment.getValue() : null;
   }
 
@@ -290,9 +317,9 @@ public class SegmentedJournal<E> implements Journal<E> {
    *
    * @throws IllegalStateException if the segment manager is not open
    */
-  JournalSegment<E> getLastSegment() {
+  RaftLogSegment<RaftLogEntry> getLastSegment() {
     assertOpen();
-    Map.Entry<Long, JournalSegment<E>> segment = segments.lastEntry();
+    Map.Entry<Long, RaftLogSegment<RaftLogEntry>> segment = segments.lastEntry();
     return segment != null ? segment.getValue() : null;
   }
 
@@ -302,12 +329,12 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @return The next segment.
    * @throws IllegalStateException if the segment manager is not open
    */
-  synchronized JournalSegment<E> getNextSegment() {
+  synchronized RaftLogSegment<RaftLogEntry> getNextSegment() {
     assertOpen();
     assertDiskSpace();
 
-    JournalSegment lastSegment = getLastSegment();
-    JournalSegmentDescriptor descriptor = JournalSegmentDescriptor.builder()
+    RaftLogSegment lastSegment = getLastSegment();
+    RaftLogSegmentDescriptor descriptor = RaftLogSegmentDescriptor.builder()
         .withId(lastSegment != null ? lastSegment.descriptor().id() + 1 : 1)
         .withIndex(currentSegment.lastIndex() + 1)
         .withMaxSegmentSize(maxSegmentSize)
@@ -326,8 +353,8 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @param index The segment index with which to look up the next segment.
    * @return The next segment for the given index.
    */
-  JournalSegment<E> getNextSegment(long index) {
-    Map.Entry<Long, JournalSegment<E>> nextSegment = segments.higherEntry(index);
+  RaftLogSegment<RaftLogEntry> getNextSegment(long index) {
+    Map.Entry<Long, RaftLogSegment<RaftLogEntry>> nextSegment = segments.higherEntry(index);
     return nextSegment != null ? nextSegment.getValue() : null;
   }
 
@@ -337,7 +364,7 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @param index The index for which to return the segment.
    * @throws IllegalStateException if the segment manager is not open
    */
-  synchronized JournalSegment<E> getSegment(long index) {
+  synchronized RaftLogSegment<RaftLogEntry> getSegment(long index) {
     assertOpen();
     // Check if the current segment contains the given index first in order to prevent an unnecessary map lookup.
     if (currentSegment != null && index > currentSegment.index()) {
@@ -345,7 +372,7 @@ public class SegmentedJournal<E> implements Journal<E> {
     }
 
     // If the index is in another segment, get the entry with the next lowest first index.
-    Map.Entry<Long, JournalSegment<E>> segment = segments.floorEntry(index);
+    Map.Entry<Long, RaftLogSegment<RaftLogEntry>> segment = segments.floorEntry(index);
     if (segment != null) {
       return segment.getValue();
     }
@@ -357,7 +384,7 @@ public class SegmentedJournal<E> implements Journal<E> {
    *
    * @param segment The segment to remove.
    */
-  synchronized void removeSegment(JournalSegment segment) {
+  synchronized void removeSegment(RaftLogSegment segment) {
     segments.remove(segment.index());
     segment.close();
     segment.delete();
@@ -367,7 +394,7 @@ public class SegmentedJournal<E> implements Journal<E> {
   /**
    * Creates a new segment.
    */
-  JournalSegment<E> createSegment(JournalSegmentDescriptor descriptor) {
+  RaftLogSegment<RaftLogEntry> createSegment(RaftLogSegmentDescriptor descriptor) {
     switch (storageLevel) {
       case MEMORY:
         return createMemorySegment(descriptor);
@@ -387,18 +414,18 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @param descriptor The segment descriptor.
    * @return The segment instance.
    */
-  protected JournalSegment<E> newSegment(JournalSegmentFile segmentFile, JournalSegmentDescriptor descriptor) {
-    return new JournalSegment<>(segmentFile, descriptor, maxEntrySize, indexDensity, cacheSize, serializer);
+  protected RaftLogSegment<RaftLogEntry> newSegment(RaftLogSegmentFile segmentFile, RaftLogSegmentDescriptor descriptor) {
+    return new RaftLogSegment<>(segmentFile, descriptor, maxEntrySize, indexDensity, cacheSize, serializer);
   }
 
   /**
    * Creates a new segment.
    */
-  private JournalSegment<E> createDiskSegment(JournalSegmentDescriptor descriptor) {
-    File segmentFile = JournalSegmentFile.createSegmentFile(name, directory, descriptor.id());
+  private RaftLogSegment<RaftLogEntry> createDiskSegment(RaftLogSegmentDescriptor descriptor) {
+    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
     Buffer buffer = FileBuffer.allocate(segmentFile, descriptor.maxSegmentSize(), descriptor.maxSegmentSize()).zero();
     descriptor.copyTo(buffer);
-    JournalSegment<E> segment = newSegment(new JournalSegmentFile(segmentFile), descriptor);
+    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
     log.debug("Created disk segment: {}", segment);
     return segment;
   }
@@ -406,11 +433,11 @@ public class SegmentedJournal<E> implements Journal<E> {
   /**
    * Creates a new segment.
    */
-  private JournalSegment<E> createMappedSegment(JournalSegmentDescriptor descriptor) {
-    File segmentFile = JournalSegmentFile.createSegmentFile(name, directory, descriptor.id());
+  private RaftLogSegment<RaftLogEntry> createMappedSegment(RaftLogSegmentDescriptor descriptor) {
+    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
     Buffer buffer = MappedBuffer.allocate(segmentFile, descriptor.maxSegmentSize(), descriptor.maxSegmentSize()).zero();
     descriptor.copyTo(buffer);
-    JournalSegment<E> segment = newSegment(new JournalSegmentFile(segmentFile), descriptor);
+    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
     log.debug("Created memory mapped segment: {}", segment);
     return segment;
   }
@@ -418,11 +445,11 @@ public class SegmentedJournal<E> implements Journal<E> {
   /**
    * Creates a new segment.
    */
-  private JournalSegment<E> createMemorySegment(JournalSegmentDescriptor descriptor) {
-    File segmentFile = JournalSegmentFile.createSegmentFile(name, directory, descriptor.id());
+  private RaftLogSegment<RaftLogEntry> createMemorySegment(RaftLogSegmentDescriptor descriptor) {
+    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
     Buffer buffer = HeapBuffer.allocate(descriptor.maxSegmentSize(), descriptor.maxSegmentSize());
     descriptor.copyTo(buffer);
-    JournalSegment<E> segment = newSegment(new JournalSegmentFile(segmentFile), descriptor);
+    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
     log.debug("Created memory segment: {}", segment);
     return segment;
   }
@@ -430,7 +457,7 @@ public class SegmentedJournal<E> implements Journal<E> {
   /**
    * Loads a segment.
    */
-  private JournalSegment<E> loadSegment(long segmentId) {
+  private RaftLogSegment<RaftLogEntry> loadSegment(long segmentId) {
     switch (storageLevel) {
       case MEMORY:
         return loadMemorySegment(segmentId);
@@ -446,11 +473,11 @@ public class SegmentedJournal<E> implements Journal<E> {
   /**
    * Loads a segment.
    */
-  private JournalSegment<E> loadDiskSegment(long segmentId) {
-    File file = JournalSegmentFile.createSegmentFile(name, directory, segmentId);
+  private RaftLogSegment<RaftLogEntry> loadDiskSegment(long segmentId) {
+    File file = RaftLogSegmentFile.createSegmentFile(name, directory, segmentId);
     Buffer buffer = FileBuffer.allocate(file, Math.min(DEFAULT_BUFFER_SIZE, maxSegmentSize), Integer.MAX_VALUE);
-    JournalSegmentDescriptor descriptor = new JournalSegmentDescriptor(buffer);
-    JournalSegment<E> segment = newSegment(new JournalSegmentFile(file), descriptor);
+    RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
+    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(file), descriptor);
     log.debug("Loaded disk segment: {} ({})", descriptor.id(), file.getName());
     return segment;
   }
@@ -458,11 +485,11 @@ public class SegmentedJournal<E> implements Journal<E> {
   /**
    * Loads a segment.
    */
-  private JournalSegment<E> loadMappedSegment(long segmentId) {
-    File file = JournalSegmentFile.createSegmentFile(name, directory, segmentId);
+  private RaftLogSegment<RaftLogEntry> loadMappedSegment(long segmentId) {
+    File file = RaftLogSegmentFile.createSegmentFile(name, directory, segmentId);
     Buffer buffer = MappedBuffer.allocate(file, Math.min(DEFAULT_BUFFER_SIZE, maxSegmentSize), Integer.MAX_VALUE);
-    JournalSegmentDescriptor descriptor = new JournalSegmentDescriptor(buffer);
-    JournalSegment<E> segment = newSegment(new JournalSegmentFile(file), descriptor);
+    RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
+    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(file), descriptor);
     log.debug("Loaded memory mapped segment: {} ({})", descriptor.id(), file.getName());
     return segment;
   }
@@ -470,11 +497,11 @@ public class SegmentedJournal<E> implements Journal<E> {
   /**
    * Loads a segment.
    */
-  private JournalSegment<E> loadMemorySegment(long segmentId) {
-    File file = JournalSegmentFile.createSegmentFile(name, directory, segmentId);
+  private RaftLogSegment<RaftLogEntry> loadMemorySegment(long segmentId) {
+    File file = RaftLogSegmentFile.createSegmentFile(name, directory, segmentId);
     Buffer buffer = HeapBuffer.allocate(Math.min(DEFAULT_BUFFER_SIZE, maxSegmentSize), Integer.MAX_VALUE);
-    JournalSegmentDescriptor descriptor = new JournalSegmentDescriptor(buffer);
-    JournalSegment<E> segment = newSegment(new JournalSegmentFile(file), descriptor);
+    RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
+    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(file), descriptor);
     log.debug("Loaded memory segment: {}", descriptor.id());
     return segment;
   }
@@ -484,22 +511,22 @@ public class SegmentedJournal<E> implements Journal<E> {
    *
    * @return A collection of segments for the log.
    */
-  protected Collection<JournalSegment<E>> loadSegments() {
+  protected Collection<RaftLogSegment<RaftLogEntry>> loadSegments() {
     // Ensure log directories are created.
     directory.mkdirs();
 
-    TreeMap<Long, JournalSegment<E>> segments = new TreeMap<>();
+    TreeMap<Long, RaftLogSegment<RaftLogEntry>> segments = new TreeMap<>();
 
     // Iterate through all files in the log directory.
     for (File file : directory.listFiles(File::isFile)) {
 
       // If the file looks like a segment file, attempt to load the segment.
-      if (JournalSegmentFile.isSegmentFile(name, file)) {
-        JournalSegmentFile segmentFile = new JournalSegmentFile(file);
-        JournalSegmentDescriptor descriptor = new JournalSegmentDescriptor(FileBuffer.allocate(file, JournalSegmentDescriptor.BYTES));
+      if (RaftLogSegmentFile.isSegmentFile(name, file)) {
+        RaftLogSegmentFile segmentFile = new RaftLogSegmentFile(file);
+        RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(FileBuffer.allocate(file, RaftLogSegmentDescriptor.BYTES));
 
         // Load the segment.
-        JournalSegment<E> segment = loadSegment(descriptor.id());
+        RaftLogSegment<RaftLogEntry> segment = loadSegment(descriptor.id());
 
         // Add the segment to the segments list.
         log.debug("Found segment: {} ({})", segment.descriptor().id(), segmentFile.file().getName());
@@ -510,19 +537,21 @@ public class SegmentedJournal<E> implements Journal<E> {
     }
 
     // Verify that all the segments in the log align with one another.
-    JournalSegment<E> previousSegment = null;
+    RaftLogSegment<RaftLogEntry> previousSegment = null;
     boolean corrupted = false;
-    for (JournalSegment<E> segment : segments.values()) {
+    Iterator<Map.Entry<Long, RaftLogSegment<RaftLogEntry>>> iterator = segments.entrySet().iterator();
+    while (iterator.hasNext()) {
+      RaftLogSegment<RaftLogEntry> segment = iterator.next().getValue();
       if (previousSegment != null && previousSegment.lastIndex() != segment.index() - 1) {
-        log.error("Journal appears to be corrupted! {} is not aligned with the prior segment {}", segment.file().file(), previousSegment.file().file());
+        log.warn("Journal is inconsistent. {} is not aligned with prior segment {}", segment.file().file(), previousSegment.file().file());
         corrupted = true;
       }
+      if (corrupted) {
+        segment.close();
+        segment.delete();
+        iterator.remove();
+      }
       previousSegment = segment;
-    }
-
-    // If the journal appears to be corrupted, throw an exception.
-    if (corrupted) {
-      throw new StorageException("Cannot load segments due to corrupt journal");
     }
 
     return segments.values();
@@ -534,7 +563,7 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @param index The index at which to reset readers.
    */
   void resetHead(long index) {
-    for (SegmentedJournalReader<E> reader : readers) {
+    for (SegmentedRaftLogReader reader : readers) {
       if (reader.getNextIndex() < index) {
         reader.reset(index);
       }
@@ -547,26 +576,14 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @param index The index at which to reset readers.
    */
   void resetTail(long index) {
-    for (SegmentedJournalReader<E> reader : readers) {
+    for (SegmentedRaftLogReader reader : readers) {
       if (reader.getNextIndex() >= index) {
         reader.reset(index);
       }
     }
   }
 
-  @Override
-  public SegmentedJournalWriter<E> writer() {
-    return writer;
-  }
-
-  @Override
-  public SegmentedJournalReader<E> openReader(long index) {
-    SegmentedJournalReader<E> reader = new SegmentedJournalReader<>(this, index);
-    readers.add(reader);
-    return reader;
-  }
-
-  void closeReader(SegmentedJournalReader<E> reader) {
+  void closeReader(SegmentedRaftLogReader reader) {
     readers.remove(reader);
   }
 
@@ -582,7 +599,7 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @return indicates whether a segment can be removed from the journal
    */
   public boolean isCompactable(long index) {
-    Map.Entry<Long, JournalSegment<E>> segmentEntry = segments.floorEntry(index);
+    Map.Entry<Long, RaftLogSegment<RaftLogEntry>> segmentEntry = segments.floorEntry(index);
     return segmentEntry != null && segments.headMap(segmentEntry.getValue().index()).size() > 0;
   }
 
@@ -593,7 +610,7 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @return the starting index of the last segment in the log
    */
   public long getCompactableIndex(long index) {
-    Map.Entry<Long, JournalSegment<E>> segmentEntry = segments.floorEntry(index);
+    Map.Entry<Long, RaftLogSegment<RaftLogEntry>> segmentEntry = segments.floorEntry(index);
     return segmentEntry != null ? segmentEntry.getValue().index() : 0;
   }
 
@@ -605,12 +622,12 @@ public class SegmentedJournal<E> implements Journal<E> {
    * @param index The index up to which to compact the journal.
    */
   public void compact(long index) {
-    Map.Entry<Long, JournalSegment<E>> segmentEntry = segments.floorEntry(index);
+    Map.Entry<Long, RaftLogSegment<RaftLogEntry>> segmentEntry = segments.floorEntry(index);
     if (segmentEntry != null) {
-      SortedMap<Long, JournalSegment<E>> compactSegments = segments.headMap(segmentEntry.getValue().index());
+      SortedMap<Long, RaftLogSegment<RaftLogEntry>> compactSegments = segments.headMap(segmentEntry.getValue().index());
       if (!compactSegments.isEmpty()) {
         log.debug("{} - Compacting {} segment(s)", name, compactSegments.size());
-        for (JournalSegment segment : compactSegments.values()) {
+        for (RaftLogSegment segment : compactSegments.values()) {
           log.trace("Deleting segment: {}", segment);
           segment.close();
           segment.delete();
@@ -632,9 +649,37 @@ public class SegmentedJournal<E> implements Journal<E> {
   }
 
   /**
-   * Segmented journal builder.
+   * Returns whether {@code flushOnCommit} is enabled for the log.
+   *
+   * @return Indicates whether {@code flushOnCommit} is enabled for the log.
    */
-  public static class Builder<E> implements io.atomix.utils.Builder<SegmentedJournal<E>> {
+  boolean isFlushOnCommit() {
+    return flushOnCommit;
+  }
+
+  /**
+   * Commits entries up to the given index.
+   *
+   * @param index The index up to which to commit entries.
+   */
+  void setCommitIndex(long index) {
+    this.commitIndex = index;
+  }
+
+  /**
+   * Returns the Raft log commit index.
+   *
+   * @return The Raft log commit index.
+   */
+  long getCommitIndex() {
+    return commitIndex;
+  }
+
+  /**
+   * Raft log builder.
+   */
+  public static class Builder implements io.atomix.utils.Builder<SegmentedRaftLog> {
+    private static final boolean DEFAULT_FLUSH_ON_COMMIT = false;
     private static final String DEFAULT_NAME = "atomix";
     private static final String DEFAULT_DIRECTORY = System.getProperty("user.dir");
     private static final int DEFAULT_MAX_SEGMENT_SIZE = 1024 * 1024 * 32;
@@ -652,6 +697,7 @@ public class SegmentedJournal<E> implements Journal<E> {
     protected int maxEntriesPerSegment = DEFAULT_MAX_ENTRIES_PER_SEGMENT;
     protected double indexDensity = DEFAULT_INDEX_DENSITY;
     protected int cacheSize = DEFAULT_CACHE_SIZE;
+    private boolean flushOnCommit = DEFAULT_FLUSH_ON_COMMIT;
 
     protected Builder() {
     }
@@ -662,7 +708,7 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @param name The storage name.
      * @return The storage builder.
      */
-    public Builder<E> withName(String name) {
+    public Builder withName(String name) {
       this.name = checkNotNull(name, "name cannot be null");
       return this;
     }
@@ -675,7 +721,7 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @param storageLevel The log storage level.
      * @return The storage builder.
      */
-    public Builder<E> withStorageLevel(StorageLevel storageLevel) {
+    public Builder withStorageLevel(StorageLevel storageLevel) {
       this.storageLevel = checkNotNull(storageLevel, "storageLevel cannot be null");
       return this;
     }
@@ -689,7 +735,7 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @return The storage builder.
      * @throws NullPointerException If the {@code directory} is {@code null}
      */
-    public Builder<E> withDirectory(String directory) {
+    public Builder withDirectory(String directory) {
       return withDirectory(new File(checkNotNull(directory, "directory cannot be null")));
     }
 
@@ -702,7 +748,7 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @return The storage builder.
      * @throws NullPointerException If the {@code directory} is {@code null}
      */
-    public Builder<E> withDirectory(File directory) {
+    public Builder withDirectory(File directory) {
       this.directory = checkNotNull(directory, "directory cannot be null");
       return this;
     }
@@ -713,7 +759,7 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @param serializer The journal serializer.
      * @return The journal builder.
      */
-    public Builder<E> withSerializer(Serializer serializer) {
+    public Builder withSerializer(Serializer serializer) {
       this.serializer = checkNotNull(serializer, "serializer cannot be null");
       return this;
     }
@@ -731,8 +777,8 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @return The storage builder.
      * @throws IllegalArgumentException If the {@code maxSegmentSize} is not positive
      */
-    public Builder<E> withMaxSegmentSize(int maxSegmentSize) {
-      checkArgument(maxSegmentSize > JournalSegmentDescriptor.BYTES, "maxSegmentSize must be greater than " + JournalSegmentDescriptor.BYTES);
+    public Builder withMaxSegmentSize(int maxSegmentSize) {
+      checkArgument(maxSegmentSize > RaftLogSegmentDescriptor.BYTES, "maxSegmentSize must be greater than " + RaftLogSegmentDescriptor.BYTES);
       this.maxSegmentSize = maxSegmentSize;
       return this;
     }
@@ -766,7 +812,7 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @deprecated since 3.0.2
      */
     @Deprecated
-    public Builder<E> withMaxEntriesPerSegment(int maxEntriesPerSegment) {
+    public Builder withMaxEntriesPerSegment(int maxEntriesPerSegment) {
       checkArgument(maxEntriesPerSegment > 0, "max entries per segment must be positive");
       checkArgument(maxEntriesPerSegment <= DEFAULT_MAX_ENTRIES_PER_SEGMENT,
           "max entries per segment cannot be greater than " + DEFAULT_MAX_ENTRIES_PER_SEGMENT);
@@ -784,7 +830,7 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @return the journal builder
      * @throws IllegalArgumentException if the density is not between 0 and 1
      */
-    public Builder<E> withIndexDensity(double indexDensity) {
+    public Builder withIndexDensity(double indexDensity) {
       checkArgument(indexDensity > 0 && indexDensity < 1, "index density must be between 0 and 1");
       this.indexDensity = indexDensity;
       return this;
@@ -797,20 +843,53 @@ public class SegmentedJournal<E> implements Journal<E> {
      * @return the journal builder
      * @throws IllegalArgumentException if the cache size is not positive
      */
-    public Builder<E> withCacheSize(int cacheSize) {
+    public Builder withCacheSize(int cacheSize) {
       checkArgument(cacheSize >= 0, "cacheSize must be positive");
       this.cacheSize = cacheSize;
       return this;
     }
 
     /**
-     * Builds the journal.
+     * Enables flushing buffers to disk when entries are committed to a segment, returning the builder for method
+     * chaining.
+     * <p>
+     * When flush-on-commit is enabled, log entry buffers will be automatically flushed to disk each time an entry is
+     * committed in a given segment.
      *
-     * @return The built storage configuration.
+     * @return The storage builder.
      */
+    public Builder withFlushOnCommit() {
+      return withFlushOnCommit(true);
+    }
+
+    /**
+     * Sets whether to flush buffers to disk when entries are committed to a segment, returning the builder for method
+     * chaining.
+     * <p>
+     * When flush-on-commit is enabled, log entry buffers will be automatically flushed to disk each time an entry is
+     * committed in a given segment.
+     *
+     * @param flushOnCommit Whether to flush buffers to disk when entries are committed to a segment.
+     * @return The storage builder.
+     */
+    public Builder withFlushOnCommit(boolean flushOnCommit) {
+      this.flushOnCommit = flushOnCommit;
+      return this;
+    }
+
     @Override
-    public SegmentedJournal<E> build() {
-      return new SegmentedJournal<>(name, storageLevel, directory, serializer, maxSegmentSize, maxEntrySize, maxEntriesPerSegment, indexDensity, cacheSize);
+    public SegmentedRaftLog build() {
+      return new SegmentedRaftLog(
+          name,
+          storageLevel,
+          directory,
+          serializer,
+          maxSegmentSize,
+          maxEntrySize,
+          maxEntriesPerSegment,
+          indexDensity,
+          cacheSize,
+          flushOnCommit);
     }
   }
 }

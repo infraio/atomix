@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal.index;
+package io.atomix.protocols.raft.storage.log.index;
 
 /**
  * Journal index.
  */
-public interface JournalIndex {
+public interface RaftLogIndex {
 
   /**
    * Adds an entry for the given index at the given position.

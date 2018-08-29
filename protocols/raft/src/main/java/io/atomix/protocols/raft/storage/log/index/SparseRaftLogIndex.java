@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.atomix.storage.journal.index;
+package io.atomix.protocols.raft.storage.log.index;
 
 import java.util.Map;
 import java.util.TreeMap;
@@ -21,12 +21,12 @@ import java.util.TreeMap;
 /**
  * Sparse index.
  */
-public class SparseJournalIndex implements JournalIndex {
+public class SparseRaftLogIndex implements RaftLogIndex {
   private static final int MIN_DENSITY = 1000;
   private final int density;
   private final TreeMap<Long, Integer> positions = new TreeMap<>();
 
-  public SparseJournalIndex(double density) {
+  public SparseRaftLogIndex(double density) {
     this.density = (int) Math.ceil(MIN_DENSITY / (density * MIN_DENSITY));
   }
 

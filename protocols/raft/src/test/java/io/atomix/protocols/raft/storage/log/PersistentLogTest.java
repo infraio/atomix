@@ -33,10 +33,10 @@ public abstract class PersistentLogTest extends AbstractLogTest {
    */
   @Test
   public void testCompactAndRecover() throws Exception {
-    RaftLog log = createLog();
+    SegmentedRaftLog log = createLog();
 
     // Write three segments to the log.
-    RaftLogWriter writer = log.writer();
+    SegmentedRaftLogWriter writer = log.writer();
     for (int i = 0; i < entriesPerSegment * 3; i++) {
       writer.append(ENTRY);
     }
@@ -51,7 +51,7 @@ public abstract class PersistentLogTest extends AbstractLogTest {
     // Reopen the log and create a reader.
     log = createLog();
     writer = log.writer();
-    RaftLogReader reader = log.openReader(1, RaftLogReader.Mode.COMMITS);
+    SegmentedRaftLogReader reader = log.openReader(1, SegmentedRaftLogReader.Mode.COMMITS);
     writer.append(ENTRY);
     writer.append(ENTRY);
     writer.commit(entriesPerSegment * 3);

@@ -24,14 +24,14 @@ import io.atomix.protocols.raft.impl.OperationResult;
 import io.atomix.protocols.raft.impl.RaftContext;
 import io.atomix.protocols.raft.protocol.*;
 import io.atomix.protocols.raft.session.RaftSession;
-import io.atomix.protocols.raft.storage.log.RaftLogReader;
-import io.atomix.protocols.raft.storage.log.RaftLogWriter;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLogReader;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLogWriter;
 import io.atomix.protocols.raft.storage.log.entry.QueryEntry;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.protocols.raft.storage.snapshot.Snapshot;
 import io.atomix.protocols.raft.storage.snapshot.SnapshotWriter;
 import io.atomix.storage.StorageException;
-import io.atomix.storage.journal.Indexed;
+import io.atomix.protocols.raft.storage.log.Indexed;
 import io.atomix.utils.time.WallClockTimestamp;
 
 import java.util.concurrent.CompletableFuture;
@@ -66,7 +66,7 @@ public class PassiveRole extends InactiveRole {
    */
   private void truncateUncommittedEntries() {
     if (role() == RaftServer.Role.PASSIVE) {
-      final RaftLogWriter writer = raft.getLogWriter();
+      final SegmentedRaftLogWriter writer = raft.getLogWriter();
       writer.truncate(raft.getCommitIndex());
     }
   }
@@ -105,7 +105,7 @@ public class PassiveRole extends InactiveRole {
    * handling the request.
    */
   protected boolean checkTerm(AppendRequest request, CompletableFuture<AppendResponse> future) {
-    RaftLogWriter writer = raft.getLogWriter();
+    SegmentedRaftLogWriter writer = raft.getLogWriter();
     if (request.term() < raft.getTerm()) {
       log.debug("Rejected {}: request term is less than the current term ({})", request, raft.getTerm());
       return failAppend(writer.getLastIndex(), future);
@@ -118,8 +118,8 @@ public class PassiveRole extends InactiveRole {
    * handling the request.
    */
   protected boolean checkPreviousEntry(AppendRequest request, CompletableFuture<AppendResponse> future) {
-    RaftLogWriter writer = raft.getLogWriter();
-    RaftLogReader reader = raft.getLogReader();
+    SegmentedRaftLogWriter writer = raft.getLogWriter();
+    SegmentedRaftLogReader reader = raft.getLogReader();
 
     // If the previous term is set, validate that it matches the local log.
     // We check the previous log term since that indicates whether any entry is present in the leader's
@@ -187,8 +187,8 @@ public class PassiveRole extends InactiveRole {
     long lastLogIndex = request.prevLogIndex();
 
     if (!request.entries().isEmpty()) {
-      final RaftLogWriter writer = raft.getLogWriter();
-      final RaftLogReader reader = raft.getLogReader();
+      final SegmentedRaftLogWriter writer = raft.getLogWriter();
+      final SegmentedRaftLogReader reader = raft.getLogReader();
 
       // If the previous term is zero, that indicates the previous index represents the beginning of the log.
       // Reset the log to the previous index plus one.
@@ -286,7 +286,7 @@ public class PassiveRole extends InactiveRole {
   /**
    * Attempts to append an entry, returning {@code false} if the append fails due to an {@link StorageException.OutOfDiskSpace} exception.
    */
-  private boolean appendEntry(long index, RaftLogEntry entry, RaftLogWriter writer, CompletableFuture<AppendResponse> future) {
+  private boolean appendEntry(long index, RaftLogEntry entry, SegmentedRaftLogWriter writer, CompletableFuture<AppendResponse> future) {
     try {
       Indexed<RaftLogEntry> indexed = writer.append(entry);
       log.trace("Appended {}", indexed);

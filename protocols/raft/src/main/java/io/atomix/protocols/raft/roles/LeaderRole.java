@@ -69,7 +69,7 @@ import io.atomix.protocols.raft.storage.log.entry.QueryEntry;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.protocols.raft.storage.system.Configuration;
 import io.atomix.storage.StorageException;
-import io.atomix.storage.journal.Indexed;
+import io.atomix.protocols.raft.storage.log.Indexed;
 import io.atomix.utils.concurrent.Futures;
 import io.atomix.utils.concurrent.Scheduled;
 

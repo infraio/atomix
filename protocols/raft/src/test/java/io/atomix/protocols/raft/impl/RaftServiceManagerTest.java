@@ -37,7 +37,7 @@ import io.atomix.protocols.raft.cluster.RaftMember;
 import io.atomix.protocols.raft.cluster.impl.DefaultRaftMember;
 import io.atomix.protocols.raft.protocol.RaftServerProtocol;
 import io.atomix.protocols.raft.storage.RaftStorage;
-import io.atomix.protocols.raft.storage.log.RaftLogWriter;
+import io.atomix.protocols.raft.storage.log.SegmentedRaftLogWriter;
 import io.atomix.protocols.raft.storage.log.TestEntry;
 import io.atomix.protocols.raft.storage.log.entry.CloseSessionEntry;
 import io.atomix.protocols.raft.storage.log.entry.CommandEntry;
@@ -108,7 +108,7 @@ public class RaftServiceManagerTest {
 
   @Test
   public void testSnapshotTakeInstall() throws Exception {
-    RaftLogWriter writer = raft.getLogWriter();
+    SegmentedRaftLogWriter writer = raft.getLogWriter();
     writer.append(new InitializeEntry(1, System.currentTimeMillis()));
     writer.append(new OpenSessionEntry(
         1,
@@ -140,7 +140,7 @@ public class RaftServiceManagerTest {
 
   @Test
   public void testInstallSnapshotOnApply() throws Exception {
-    RaftLogWriter writer = raft.getLogWriter();
+    SegmentedRaftLogWriter writer = raft.getLogWriter();
     writer.append(new InitializeEntry(1, System.currentTimeMillis()));
     writer.append(new OpenSessionEntry(
         1,
