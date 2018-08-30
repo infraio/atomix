@@ -149,7 +149,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
   /**
    * Maps the log segment into memory.
    */
-  public void map() {
+  void map() {
     MappedByteBuffer buffer = writer.map();
     readers.forEach(reader -> reader.map(buffer));
   }
@@ -157,7 +157,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
   /**
    * Unmaps the log segment from memory.
    */
-  public void unmap() {
+  void unmap() {
     writer.unmap();
     readers.forEach(reader -> reader.unmap());
   }
@@ -180,6 +180,10 @@ public class RaftLogSegment<E> implements AutoCloseable {
   MappableLogSegmentReader<E> createReader() {
     checkOpen();
     MappableLogSegmentReader<E> reader = new MappableLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, index, namespace);
+    MappedByteBuffer buffer = writer.buffer();
+    if (buffer != null) {
+      reader.map(buffer);
+    }
     readers.add(reader);
     return reader;
   }

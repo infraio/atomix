@@ -79,6 +79,14 @@ class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
     }
   }
 
+  MappedByteBuffer buffer() {
+    RaftLogWriter<E> writer = this.writer;
+    if (writer instanceof MappedLogSegmentWriter) {
+      return ((MappedLogSegmentWriter<E>) writer).buffer();
+    }
+    return null;
+  }
+
   public long firstIndex() {
     return descriptor.index();
   }
