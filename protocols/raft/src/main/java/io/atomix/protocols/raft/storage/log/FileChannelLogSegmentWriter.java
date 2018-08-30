@@ -44,7 +44,7 @@ import java.util.zip.Checksum;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
+class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final File file;
   private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
@@ -55,7 +55,7 @@ public class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final long firstIndex;
   private Indexed<E> lastEntry;
 
-  public FileChannelLogSegmentWriter(
+  FileChannelLogSegmentWriter(
       File file,
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,

@@ -33,7 +33,7 @@ import java.util.zip.Checksum;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
+class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
   private final FileChannel channel;
   private final int maxEntrySize;
   private final RaftLogIndex index;
@@ -43,7 +43,7 @@ public class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
   private Indexed<E> currentEntry;
   private Indexed<E> nextEntry;
 
-  public FileChannelLogSegmentReader(
+  FileChannelLogSegmentReader(
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,

@@ -43,7 +43,7 @@ import java.util.zip.CRC32;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
+class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final File file;
   private final MappedByteBuffer mappedBuffer;
   private final ByteBuffer buffer;
@@ -54,7 +54,7 @@ public class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final long firstIndex;
   private Indexed<E> lastEntry;
 
-  public MappedLogSegmentWriter(
+  MappedLogSegmentWriter(
       File file,
       MappedByteBuffer buffer,
       RaftLogSegmentDescriptor descriptor,
@@ -70,6 +70,15 @@ public class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
     this.namespace = namespace;
     this.firstIndex = descriptor.index();
     reset(0);
+  }
+
+  /**
+   * Returns the mapped buffer underlying the segment writer.
+   *
+   * @return the mapped buffer underlying the segment writer
+   */
+  MappedByteBuffer buffer() {
+    return mappedBuffer;
   }
 
   /**

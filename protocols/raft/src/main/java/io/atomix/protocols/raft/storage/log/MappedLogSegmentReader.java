@@ -31,7 +31,7 @@ import java.util.zip.CRC32;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class MappedLogSegmentReader<E> implements RaftLogReader<E> {
+class MappedLogSegmentReader<E> implements RaftLogReader<E> {
   private final ByteBuffer buffer;
   private final int maxEntrySize;
   private final RaftLogIndex index;
@@ -40,7 +40,7 @@ public class MappedLogSegmentReader<E> implements RaftLogReader<E> {
   private Indexed<E> currentEntry;
   private Indexed<E> nextEntry;
 
-  public MappedLogSegmentReader(
+  MappedLogSegmentReader(
       ByteBuffer buffer,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,

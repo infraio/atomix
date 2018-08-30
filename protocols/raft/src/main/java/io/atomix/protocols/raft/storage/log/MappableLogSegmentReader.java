@@ -24,7 +24,7 @@ import java.nio.channels.FileChannel;
 /**
  * Mappable log segment reader.
  */
-public class MappableLogSegmentReader<E> implements RaftLogReader<E> {
+class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
@@ -32,7 +32,7 @@ public class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   private final Namespace namespace;
   private RaftLogReader<E> reader;
 
-  public MappableLogSegmentReader(
+  MappableLogSegmentReader(
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
@@ -46,16 +46,28 @@ public class MappableLogSegmentReader<E> implements RaftLogReader<E> {
     this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
   }
 
+  /**
+   * Converts the reader to a mapped reader using the given buffer.
+   *
+   * @param buffer the mapped buffer
+   */
   void map(ByteBuffer buffer) {
-    RaftLogReader<E> reader = this.reader;
-    this.reader = new MappedLogSegmentReader<>(buffer, descriptor, maxEntrySize, index, namespace);
-    this.reader.reset(reader.getNextIndex());
+    if (!(reader instanceof MappedLogSegmentReader)) {
+      RaftLogReader<E> reader = this.reader;
+      this.reader = new MappedLogSegmentReader<>(buffer, descriptor, maxEntrySize, index, namespace);
+      this.reader.reset(reader.getNextIndex());
+    }
   }
 
+  /**
+   * Converts the reader to an unmapped reader.
+   */
   void unmap() {
-    RaftLogReader<E> reader = this.reader;
-    this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
-    this.reader.reset(reader.getNextIndex());
+    if (reader instanceof MappedLogSegmentReader) {
+      RaftLogReader<E> reader = this.reader;
+      this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
+      this.reader.reset(reader.getNextIndex());
+    }
   }
 
   @Override

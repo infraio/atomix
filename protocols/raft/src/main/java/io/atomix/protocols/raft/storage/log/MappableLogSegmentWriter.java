@@ -26,7 +26,7 @@ import java.nio.channels.FileChannel;
 /**
  * Mappable log segment writer.
  */
-public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
+class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final File file;
   private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
@@ -35,7 +35,7 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final Namespace namespace;
   private RaftLogWriter<E> writer;
 
-  public MappableLogSegmentWriter(
+  MappableLogSegmentWriter(
       File file,
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
@@ -51,7 +51,16 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
     this.writer = new FileChannelLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
   }
 
+  /**
+   * Maps the segment writer into memory, returning the mapped buffer.
+   *
+   * @return the buffer that was mapped into memory
+   */
   MappedByteBuffer map() {
+    if (writer instanceof MappedLogSegmentWriter) {
+      return ((MappedLogSegmentWriter<E>) writer).buffer();
+    }
+
     try {
       MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, descriptor.maxSegmentSize());
       this.writer = new MappedLogSegmentWriter<>(file, buffer, descriptor, maxEntrySize, index, namespace);
@@ -61,8 +70,13 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
     }
   }
 
+  /**
+   * Unmaps the mapped buffer.
+   */
   void unmap() {
-    this.writer = new FileChannelLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
+    if (writer instanceof MappedLogSegmentWriter) {
+      this.writer = new FileChannelLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
+    }
   }
 
   public long firstIndex() {
