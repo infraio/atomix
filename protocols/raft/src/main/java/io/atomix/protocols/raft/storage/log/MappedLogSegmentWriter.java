@@ -22,6 +22,7 @@ import io.atomix.utils.memory.BufferCleaner;
 import io.atomix.utils.serializer.Namespace;
 
 import java.io.IOException;
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.zip.CRC32;
@@ -207,6 +208,10 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
 
     // Serialize the entry.
     int position = buffer.position();
+    if (position + Bytes.INTEGER + Bytes.INTEGER > buffer.limit()) {
+      throw new BufferOverflowException();
+    }
+
     buffer.position(position + Bytes.INTEGER + Bytes.INTEGER);
     namespace.serialize(entry, buffer);
 
@@ -223,7 +228,7 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
     final CRC32 crc32 = new CRC32();
     buffer.position(position + Bytes.INTEGER + Bytes.INTEGER);
     ByteBuffer slice = buffer.slice();
-    buffer.limit(length);
+    slice.limit(length);
     crc32.update(slice);
     final long checksum = crc32.getValue();
 

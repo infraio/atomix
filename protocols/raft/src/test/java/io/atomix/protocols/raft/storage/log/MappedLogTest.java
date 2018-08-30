@@ -20,7 +20,7 @@ import io.atomix.storage.StorageLevel;
 /**
  * Disk log test.
  */
-public class MappedLogTest extends AbstractLogTest {
+public class MappedLogTest extends PersistentLogTest {
   public MappedLogTest(int maxSegmentSize, int cacheSize) {
     super(maxSegmentSize, cacheSize);
   }
