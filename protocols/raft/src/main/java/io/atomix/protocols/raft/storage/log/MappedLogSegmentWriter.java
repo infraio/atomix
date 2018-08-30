@@ -21,11 +21,9 @@ import io.atomix.storage.buffer.Bytes;
 import io.atomix.utils.memory.BufferCleaner;
 import io.atomix.utils.serializer.Namespace;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-import java.nio.file.Files;
 import java.util.zip.CRC32;
 
 /**
@@ -44,7 +42,6 @@ import java.util.zip.CRC32;
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
 class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
-  private final File file;
   private final MappedByteBuffer mappedBuffer;
   private final ByteBuffer buffer;
   private final RaftLogSegmentDescriptor descriptor;
@@ -55,13 +52,11 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
   private Indexed<E> lastEntry;
 
   MappedLogSegmentWriter(
-      File file,
       MappedByteBuffer buffer,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
       RaftLogIndex index,
       Namespace namespace) {
-    this.file = file;
     this.mappedBuffer = buffer;
     this.buffer = buffer.slice();
     this.descriptor = descriptor;
@@ -286,17 +281,6 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
     flush();
     try {
       BufferCleaner.freeBuffer(buffer);
-    } catch (IOException e) {
-      throw new RaftIOException(e);
-    }
-  }
-
-  /**
-   * Deletes the segment.
-   */
-  void delete() {
-    try {
-      Files.deleteIfExists(file.toPath());
     } catch (IOException e) {
       throw new RaftIOException(e);
     }

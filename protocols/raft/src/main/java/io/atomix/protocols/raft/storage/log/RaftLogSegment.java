@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.Set;
 
@@ -57,7 +58,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
     this.maxEntrySize = maxEntrySize;
     this.index = new SparseRaftLogIndex(indexDensity);
     this.namespace = namespace;
-    this.writer = new MappableLogSegmentWriter<>(file.file(), openChannel(file.file()), descriptor, maxEntrySize, index, namespace);
+    this.writer = new MappableLogSegmentWriter<>(openChannel(file.file()), descriptor, maxEntrySize, index, namespace);
   }
 
   private FileChannel openChannel(File file) {
@@ -219,7 +220,11 @@ public class RaftLogSegment<E> implements AutoCloseable {
    * Deletes the segment.
    */
   public void delete() {
-    writer.delete();
+    try {
+      Files.deleteIfExists(file.file().toPath());
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
   }
 
   @Override

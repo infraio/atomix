@@ -17,10 +17,8 @@ package io.atomix.protocols.raft.storage.log;
 
 import io.atomix.protocols.raft.storage.log.index.Position;
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
-import io.atomix.utils.memory.BufferCleaner;
 import io.atomix.utils.serializer.Namespace;
 
-import java.io.IOException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.util.NoSuchElementException;
@@ -168,10 +166,6 @@ class MappedLogSegmentReader<E> implements RaftLogReader<E> {
 
   @Override
   public void close() {
-    try {
-      BufferCleaner.freeBuffer(buffer);
-    } catch (IOException e) {
-      throw new RaftIOException(e);
-    }
+    // Do nothing. The writer is responsible for cleaning the mapped buffer.
   }
 }

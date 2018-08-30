@@ -18,7 +18,6 @@ package io.atomix.protocols.raft.storage.log;
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.utils.serializer.Namespace;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -27,7 +26,6 @@ import java.nio.channels.FileChannel;
  * Mappable log segment writer.
  */
 class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
-  private final File file;
   private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
@@ -36,19 +34,17 @@ class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   private RaftLogWriter<E> writer;
 
   MappableLogSegmentWriter(
-      File file,
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
       RaftLogIndex index,
       Namespace namespace) {
-    this.file = file;
     this.channel = channel;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
     this.index = index;
     this.namespace = namespace;
-    this.writer = new FileChannelLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
+    this.writer = new FileChannelLogSegmentWriter<>(channel, descriptor, maxEntrySize, index, namespace);
   }
 
   /**
@@ -63,7 +59,7 @@ class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
 
     try {
       MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, descriptor.maxSegmentSize());
-      this.writer = new MappedLogSegmentWriter<>(file, buffer, descriptor, maxEntrySize, index, namespace);
+      this.writer = new MappedLogSegmentWriter<>(buffer, descriptor, maxEntrySize, index, namespace);
       return buffer;
     } catch (IOException e) {
       throw new RaftIOException(e);
@@ -75,7 +71,8 @@ class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
    */
   void unmap() {
     if (writer instanceof MappedLogSegmentWriter) {
-      this.writer = new FileChannelLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
+      writer.close();
+      writer = new FileChannelLogSegmentWriter<>(channel, descriptor, maxEntrySize, index, namespace);
     }
   }
 
@@ -129,13 +126,5 @@ class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   @Override
   public void close() {
     writer.close();
-  }
-
-  public void delete() {
-    if (writer instanceof MappedLogSegmentWriter) {
-      ((MappedLogSegmentWriter<E>) writer).delete();
-    } else if (writer instanceof FileChannelLogSegmentWriter) {
-      ((FileChannelLogSegmentWriter<E>) writer).delete();
-    }
   }
 }
