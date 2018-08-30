@@ -43,7 +43,7 @@ public class SegmentedRaftLogReader implements RaftLogReader<RaftLogEntry> {
   private final SegmentedRaftLog log;
   private RaftLogSegment<RaftLogEntry> currentSegment;
   private Indexed<RaftLogEntry> previousEntry;
-  private RaftLogSegmentReader<RaftLogEntry> currentReader;
+  private MappableLogSegmentReader<RaftLogEntry> currentReader;
   private final Mode mode;
 
   public SegmentedRaftLogReader(SegmentedRaftLog log, long index, Mode mode) {

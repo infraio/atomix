@@ -23,6 +23,7 @@ import io.atomix.utils.serializer.Namespace;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
 import java.util.Set;
@@ -41,8 +42,8 @@ public class RaftLogSegment<E> implements AutoCloseable {
   private final int maxEntrySize;
   private final RaftLogIndex index;
   private final Namespace namespace;
-  private final RaftLogSegmentWriter<E> writer;
-  private final Set<RaftLogSegmentReader<E>> readers = Sets.newConcurrentHashSet();
+  private final MappableLogSegmentWriter<E> writer;
+  private final Set<MappableLogSegmentReader<E>> readers = Sets.newConcurrentHashSet();
   private final RaftLogSegmentCache cache;
   private boolean open = true;
 
@@ -59,7 +60,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
     this.index = new SparseRaftLogIndex(indexDensity);
     this.namespace = namespace;
     this.cache = new RaftLogSegmentCache(descriptor.index(), cacheSize);
-    this.writer = new RaftLogSegmentWriter<>(file.file(), openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
+    this.writer = new MappableLogSegmentWriter<>(file.file(), openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
   }
 
   private FileChannel openChannel(File file) {
@@ -131,30 +132,12 @@ public class RaftLogSegment<E> implements AutoCloseable {
   }
 
   /**
-   * Returns the segment size.
-   *
-   * @return The segment size.
-   */
-  public long size() {
-    return writer.size();
-  }
-
-  /**
    * Returns a boolean value indicating whether the segment is empty.
    *
    * @return Indicates whether the segment is empty.
    */
   public boolean isEmpty() {
     return length() == 0;
-  }
-
-  /**
-   * Returns a boolean indicating whether the segment is full.
-   *
-   * @return Indicates whether the segment is full.
-   */
-  public boolean isFull() {
-    return writer.isFull();
   }
 
   /**
@@ -167,11 +150,27 @@ public class RaftLogSegment<E> implements AutoCloseable {
   }
 
   /**
+   * Maps the log segment into memory.
+   */
+  public void map() {
+    MappedByteBuffer buffer = writer.map();
+    readers.forEach(reader -> reader.map(buffer));
+  }
+
+  /**
+   * Unmaps the log segment from memory.
+   */
+  public void unmap() {
+    writer.unmap();
+    readers.forEach(reader -> reader.unmap());
+  }
+
+  /**
    * Returns the segment writer.
    *
    * @return The segment writer.
    */
-  public RaftLogSegmentWriter<E> writer() {
+  public MappableLogSegmentWriter<E> writer() {
     checkOpen();
     return writer;
   }
@@ -181,9 +180,9 @@ public class RaftLogSegment<E> implements AutoCloseable {
    *
    * @return A new segment reader.
    */
-  RaftLogSegmentReader<E> createReader() {
+  MappableLogSegmentReader<E> createReader() {
     checkOpen();
-    RaftLogSegmentReader<E> reader = new RaftLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
+    MappableLogSegmentReader<E> reader = new MappableLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
     readers.add(reader);
     return reader;
   }
@@ -228,7 +227,6 @@ public class RaftLogSegment<E> implements AutoCloseable {
         .add("id", id())
         .add("version", version())
         .add("index", index())
-        .add("size", size())
         .toString();
   }
 }

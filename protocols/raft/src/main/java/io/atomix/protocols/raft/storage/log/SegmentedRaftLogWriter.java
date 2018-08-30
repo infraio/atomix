@@ -16,6 +16,7 @@
 package io.atomix.protocols.raft.storage.log;
 
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
+import io.atomix.storage.StorageLevel;
 
 import java.nio.BufferOverflowException;
 
@@ -25,7 +26,7 @@ import java.nio.BufferOverflowException;
 public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
   private final SegmentedRaftLog log;
   private RaftLogSegment<RaftLogEntry> currentSegment;
-  private RaftLogSegmentWriter<RaftLogEntry> currentWriter;
+  private MappableLogSegmentWriter<RaftLogEntry> currentWriter;
 
   public SegmentedRaftLogWriter(SegmentedRaftLog log) {
     this.log = log;
@@ -58,6 +59,9 @@ public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
       currentWriter.close();
       currentSegment = log.resetSegments(index);
       currentWriter = currentSegment.writer();
+      if (log.storageLevel() == StorageLevel.MAPPED) {
+        currentSegment.map();
+      }
     } else {
       truncate(index - 1);
     }
@@ -81,19 +85,20 @@ public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
   @Override
   public <T extends RaftLogEntry> Indexed<T> append(T entry) {
     try {
-      if (currentWriter.isFull()) {
-        currentWriter.flush();
-        currentSegment = log.getNextSegment();
-        currentWriter = currentSegment.writer();
-      }
       return currentWriter.append(entry);
     } catch (BufferOverflowException e) {
       if (currentWriter.firstIndex() == currentWriter.getNextIndex()) {
         throw e;
       }
       currentWriter.flush();
+      if (log.storageLevel() == StorageLevel.MAPPED) {
+        currentSegment.unmap();
+      }
       currentSegment = log.getNextSegment();
       currentWriter = currentSegment.writer();
+      if (log.storageLevel() == StorageLevel.MAPPED) {
+        currentSegment.map();
+      }
       return currentWriter.append(entry);
     }
   }
@@ -101,19 +106,20 @@ public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
   @Override
   public void append(Indexed<RaftLogEntry> entry) {
     try {
-      if (currentWriter.isFull()) {
-        currentWriter.flush();
-        currentSegment = log.getNextSegment();
-        currentWriter = currentSegment.writer();
-      }
       currentWriter.append(entry);
     } catch (BufferOverflowException e) {
       if (currentWriter.firstIndex() == currentWriter.getNextIndex()) {
         throw e;
       }
       currentWriter.flush();
+      if (log.storageLevel() == StorageLevel.MAPPED) {
+        currentSegment.unmap();
+      }
       currentSegment = log.getNextSegment();
       currentWriter = currentSegment.writer();
+      if (log.storageLevel() == StorageLevel.MAPPED) {
+        currentSegment.map();
+      }
       currentWriter.append(entry);
     }
   }
@@ -129,6 +135,9 @@ public class SegmentedRaftLogWriter implements RaftLogWriter<RaftLogEntry> {
       log.removeSegment(currentSegment);
       currentSegment = log.getLastSegment();
       currentWriter = currentSegment.writer();
+      if (log.storageLevel() == StorageLevel.MAPPED) {
+        currentSegment.map();
+      }
     }
 
     // Truncate the current index.
