@@ -48,7 +48,7 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
     this.maxEntrySize = maxEntrySize;
     this.index = index;
     this.namespace = namespace;
-    this.writer = new RaftLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
+    this.writer = new FileChannelLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
   }
 
   MappedByteBuffer map() {
@@ -62,7 +62,7 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   }
 
   void unmap() {
-    this.writer = new RaftLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
+    this.writer = new FileChannelLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
   }
 
   public long firstIndex() {
@@ -112,8 +112,8 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   public void delete() {
     if (writer instanceof MappedLogSegmentWriter) {
       ((MappedLogSegmentWriter<E>) writer).delete();
-    } else if (writer instanceof RaftLogSegmentWriter) {
-      ((RaftLogSegmentWriter<E>) writer).delete();
+    } else if (writer instanceof FileChannelLogSegmentWriter) {
+      ((FileChannelLogSegmentWriter<E>) writer).delete();
     }
   }
 }
