@@ -36,7 +36,6 @@ import java.util.zip.Checksum;
 public class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
   private final FileChannel channel;
   private final int maxEntrySize;
-  private final RaftLogSegmentCache cache;
   private final RaftLogIndex index;
   private final Namespace namespace;
   private final ByteBuffer memory;
@@ -48,12 +47,10 @@ public class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
-      RaftLogSegmentCache cache,
       RaftLogIndex index,
       Namespace namespace) {
     this.channel = channel;
     this.maxEntrySize = maxEntrySize;
-    this.cache = cache;
     this.index = index;
     this.namespace = namespace;
     this.memory = ByteBuffer.allocate((maxEntrySize + Bytes.INTEGER + Bytes.INTEGER) * 2);
@@ -143,21 +140,6 @@ public class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
   private void readNext() {
     // Compute the index of the next entry in the segment.
     final long index = getNextIndex();
-
-    Indexed cachedEntry = cache.get(index);
-    if (cachedEntry != null) {
-      this.nextEntry = cachedEntry;
-      try {
-        channel.position(channel.position() + memory.position() + cachedEntry.size() + Bytes.INTEGER + Bytes.INTEGER);
-      } catch (IOException e) {
-        throw new RaftIOException(e);
-      }
-      memory.clear().limit(0);
-      return;
-    } else if (cache.index() > 0 && cache.index() < index) {
-      this.nextEntry = null;
-      return;
-    }
 
     try {
       // Read more bytes from the segment if necessary.

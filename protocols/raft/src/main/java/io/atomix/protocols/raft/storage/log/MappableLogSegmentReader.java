@@ -28,7 +28,6 @@ public class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
-  private final RaftLogSegmentCache cache;
   private final RaftLogIndex index;
   private final Namespace namespace;
   private RaftLogReader<E> reader;
@@ -37,16 +36,14 @@ public class MappableLogSegmentReader<E> implements RaftLogReader<E> {
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
-      RaftLogSegmentCache cache,
       RaftLogIndex index,
       Namespace namespace) {
     this.channel = channel;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
-    this.cache = cache;
     this.index = index;
     this.namespace = namespace;
-    this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, cache, index, namespace);
+    this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
   }
 
   void map(ByteBuffer buffer) {
@@ -54,7 +51,7 @@ public class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   }
 
   void unmap() {
-    this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, cache, index, namespace);
+    this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
   }
 
   @Override

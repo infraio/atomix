@@ -44,7 +44,6 @@ public class RaftLogSegment<E> implements AutoCloseable {
   private final Namespace namespace;
   private final MappableLogSegmentWriter<E> writer;
   private final Set<MappableLogSegmentReader<E>> readers = Sets.newConcurrentHashSet();
-  private final RaftLogSegmentCache cache;
   private boolean open = true;
 
   public RaftLogSegment(
@@ -52,15 +51,13 @@ public class RaftLogSegment<E> implements AutoCloseable {
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
       double indexDensity,
-      int cacheSize,
       Namespace namespace) {
     this.file = file;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
     this.index = new SparseRaftLogIndex(indexDensity);
     this.namespace = namespace;
-    this.cache = new RaftLogSegmentCache(descriptor.index(), cacheSize);
-    this.writer = new MappableLogSegmentWriter<>(file.file(), openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
+    this.writer = new MappableLogSegmentWriter<>(file.file(), openChannel(file.file()), descriptor, maxEntrySize, index, namespace);
   }
 
   private FileChannel openChannel(File file) {
@@ -182,7 +179,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
    */
   MappableLogSegmentReader<E> createReader() {
     checkOpen();
-    MappableLogSegmentReader<E> reader = new MappableLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, cache, index, namespace);
+    MappableLogSegmentReader<E> reader = new MappableLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, index, namespace);
     readers.add(reader);
     return reader;
   }

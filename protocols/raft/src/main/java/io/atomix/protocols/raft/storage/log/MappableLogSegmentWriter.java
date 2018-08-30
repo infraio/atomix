@@ -31,7 +31,6 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
-  private final RaftLogSegmentCache cache;
   private final RaftLogIndex index;
   private final Namespace namespace;
   private RaftLogWriter<E> writer;
@@ -41,17 +40,15 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
-      RaftLogSegmentCache cache,
       RaftLogIndex index,
       Namespace namespace) {
     this.file = file;
     this.channel = channel;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
-    this.cache = cache;
     this.index = index;
     this.namespace = namespace;
-    this.writer = new RaftLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, cache, index, namespace);
+    this.writer = new RaftLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
   }
 
   MappedByteBuffer map() {
@@ -65,7 +62,7 @@ public class MappableLogSegmentWriter<E> implements RaftLogWriter<E> {
   }
 
   void unmap() {
-    this.writer = new RaftLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, cache, index, namespace);
+    this.writer = new RaftLogSegmentWriter<>(file, channel, descriptor, maxEntrySize, index, namespace);
   }
 
   public long firstIndex() {

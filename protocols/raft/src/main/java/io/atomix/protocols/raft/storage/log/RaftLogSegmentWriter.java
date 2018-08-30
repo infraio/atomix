@@ -49,7 +49,6 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final FileChannel channel;
   private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
-  private final RaftLogSegmentCache cache;
   private final RaftLogIndex index;
   private final Namespace namespace;
   private final ByteBuffer memory;
@@ -61,14 +60,12 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
       FileChannel channel,
       RaftLogSegmentDescriptor descriptor,
       int maxEntrySize,
-      RaftLogSegmentCache cache,
       RaftLogIndex index,
       Namespace namespace) {
     this.file = file;
     this.channel = channel;
     this.descriptor = descriptor;
     this.maxEntrySize = maxEntrySize;
-    this.cache = cache;
     this.index = index;
     this.memory = ByteBuffer.allocate((maxEntrySize + Bytes.INTEGER + Bytes.INTEGER) * 2);
     memory.limit(0);
@@ -263,7 +260,6 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
       // Update the last entry with the correct index/term/length.
       Indexed<E> indexedEntry = new Indexed<>(index, entry, length);
       this.lastEntry = indexedEntry;
-      this.cache.put(indexedEntry);
       this.index.index(index, (int) position);
       return (Indexed<T>) indexedEntry;
     } catch (IOException e) {
@@ -284,7 +280,6 @@ public class RaftLogSegmentWriter<E> implements RaftLogWriter<E> {
 
     try {
       // Truncate the index.
-      this.cache.truncate(index);
       this.index.truncate(index);
 
       if (index < descriptor.index()) {

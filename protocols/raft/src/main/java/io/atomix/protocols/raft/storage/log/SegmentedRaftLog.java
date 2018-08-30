@@ -415,7 +415,7 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
    * @return The segment instance.
    */
   protected RaftLogSegment<RaftLogEntry> newSegment(RaftLogSegmentFile segmentFile, RaftLogSegmentDescriptor descriptor) {
-    return new RaftLogSegment<>(segmentFile, descriptor, maxEntrySize, indexDensity, cacheSize, namespace);
+    return new RaftLogSegment<>(segmentFile, descriptor, maxEntrySize, indexDensity, namespace);
   }
 
   /**
