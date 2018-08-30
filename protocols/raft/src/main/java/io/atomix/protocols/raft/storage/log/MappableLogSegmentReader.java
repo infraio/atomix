@@ -47,11 +47,15 @@ public class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   }
 
   void map(ByteBuffer buffer) {
+    RaftLogReader<E> reader = this.reader;
     this.reader = new MappedLogSegmentReader<>(buffer, descriptor, maxEntrySize, index, namespace);
+    this.reader.reset(reader.getNextIndex());
   }
 
   void unmap() {
+    RaftLogReader<E> reader = this.reader;
     this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
+    this.reader.reset(reader.getNextIndex());
   }
 
   @Override
