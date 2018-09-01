@@ -22,6 +22,7 @@ import io.atomix.utils.serializer.Namespace;
 
 import java.io.IOException;
 import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.zip.CRC32;
@@ -137,6 +138,12 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
 
       // Reset the buffer to the previous mark.
       channel.position(channel.position() + memory.reset().position());
+    } catch (BufferUnderflowException e) {
+      try {
+        channel.position(channel.position() + memory.reset().position());
+      } catch (IOException e2) {
+        throw new RaftIOException(e2);
+      }
     } catch (IOException e) {
       throw new RaftIOException(e);
     }

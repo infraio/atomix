@@ -212,7 +212,6 @@ public class RaftLogSegment<E> implements AutoCloseable {
   public void close() {
     writer.close();
     readers.forEach(reader -> reader.close());
-    descriptor.close();
     open = false;
   }
 

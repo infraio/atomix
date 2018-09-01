@@ -19,15 +19,16 @@ import com.google.common.collect.Sets;
 import io.atomix.protocols.raft.storage.log.entry.RaftLogEntry;
 import io.atomix.storage.StorageException;
 import io.atomix.storage.StorageLevel;
-import io.atomix.storage.buffer.Buffer;
-import io.atomix.storage.buffer.FileBuffer;
-import io.atomix.storage.buffer.HeapBuffer;
-import io.atomix.storage.buffer.MappedBuffer;
 import io.atomix.utils.serializer.Namespace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
@@ -395,15 +396,28 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
    * Creates a new segment.
    */
   RaftLogSegment<RaftLogEntry> createSegment(RaftLogSegmentDescriptor descriptor) {
-    switch (storageLevel) {
-      case MEMORY:
-        return createMemorySegment(descriptor);
-      case MAPPED:
-        return createMappedSegment(descriptor);
-      case DISK:
-        return createDiskSegment(descriptor);
-      default:
-        throw new AssertionError();
+    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
+    FileChannel channel = createChannel(segmentFile, descriptor);
+    ByteBuffer buffer = ByteBuffer.allocate(RaftLogSegmentDescriptor.BYTES);
+    descriptor.copyTo(buffer);
+    buffer.flip();
+    try {
+      channel.write(buffer);
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
+    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
+    log.debug("Created segment: {}", segment);
+    return segment;
+  }
+
+  private FileChannel createChannel(File file, RaftLogSegmentDescriptor descriptor) {
+    try {
+      RandomAccessFile raf = new RandomAccessFile(file, "rw");
+      raf.setLength(descriptor.maxSegmentSize());
+      return raf.getChannel();
+    } catch (IOException e) {
+      throw new RaftIOException(e);
     }
   }
 
@@ -419,91 +433,29 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
   }
 
   /**
-   * Creates a new segment.
-   */
-  private RaftLogSegment<RaftLogEntry> createDiskSegment(RaftLogSegmentDescriptor descriptor) {
-    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
-    Buffer buffer = FileBuffer.allocate(segmentFile, descriptor.maxSegmentSize(), descriptor.maxSegmentSize()).zero();
-    descriptor.copyTo(buffer);
-    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
-    log.debug("Created disk segment: {}", segment);
-    return segment;
-  }
-
-  /**
-   * Creates a new segment.
-   */
-  private RaftLogSegment<RaftLogEntry> createMappedSegment(RaftLogSegmentDescriptor descriptor) {
-    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
-    Buffer buffer = MappedBuffer.allocate(segmentFile, descriptor.maxSegmentSize(), descriptor.maxSegmentSize()).zero();
-    descriptor.copyTo(buffer);
-    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
-    log.debug("Created memory mapped segment: {}", segment);
-    return segment;
-  }
-
-  /**
-   * Creates a new segment.
-   */
-  private RaftLogSegment<RaftLogEntry> createMemorySegment(RaftLogSegmentDescriptor descriptor) {
-    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
-    Buffer buffer = HeapBuffer.allocate(descriptor.maxSegmentSize(), descriptor.maxSegmentSize());
-    descriptor.copyTo(buffer);
-    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
-    log.debug("Created memory segment: {}", segment);
-    return segment;
-  }
-
-  /**
    * Loads a segment.
    */
   private RaftLogSegment<RaftLogEntry> loadSegment(long segmentId) {
-    switch (storageLevel) {
-      case MEMORY:
-        return loadMemorySegment(segmentId);
-      case MAPPED:
-        return loadMappedSegment(segmentId);
-      case DISK:
-        return loadDiskSegment(segmentId);
-      default:
-        throw new AssertionError();
+    File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, segmentId);
+    ByteBuffer buffer = ByteBuffer.allocate(RaftLogSegmentDescriptor.BYTES);
+    try (FileChannel channel = openChannel(segmentFile)) {
+      channel.read(buffer);
+      buffer.flip();
+      RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
+      RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
+      log.debug("Loaded disk segment: {} ({})", descriptor.id(), segmentFile.getName());
+      return segment;
+    } catch (IOException e) {
+      throw new RaftIOException(e);
     }
   }
 
-  /**
-   * Loads a segment.
-   */
-  private RaftLogSegment<RaftLogEntry> loadDiskSegment(long segmentId) {
-    File file = RaftLogSegmentFile.createSegmentFile(name, directory, segmentId);
-    Buffer buffer = FileBuffer.allocate(file, Math.min(DEFAULT_BUFFER_SIZE, maxSegmentSize), Integer.MAX_VALUE);
-    RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
-    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(file), descriptor);
-    log.debug("Loaded disk segment: {} ({})", descriptor.id(), file.getName());
-    return segment;
-  }
-
-  /**
-   * Loads a segment.
-   */
-  private RaftLogSegment<RaftLogEntry> loadMappedSegment(long segmentId) {
-    File file = RaftLogSegmentFile.createSegmentFile(name, directory, segmentId);
-    Buffer buffer = MappedBuffer.allocate(file, Math.min(DEFAULT_BUFFER_SIZE, maxSegmentSize), Integer.MAX_VALUE);
-    RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
-    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(file), descriptor);
-    log.debug("Loaded memory mapped segment: {} ({})", descriptor.id(), file.getName());
-    return segment;
-  }
-
-  /**
-   * Loads a segment.
-   */
-  private RaftLogSegment<RaftLogEntry> loadMemorySegment(long segmentId) {
-    File file = RaftLogSegmentFile.createSegmentFile(name, directory, segmentId);
-    Buffer buffer = HeapBuffer.allocate(Math.min(DEFAULT_BUFFER_SIZE, maxSegmentSize), Integer.MAX_VALUE);
-    RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
-    RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(file), descriptor);
-    log.debug("Loaded memory segment: {}", descriptor.id());
-    return segment;
+  private FileChannel openChannel(File file) {
+    try {
+      return FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
   }
 
   /**
@@ -523,7 +475,15 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
       // If the file looks like a segment file, attempt to load the segment.
       if (RaftLogSegmentFile.isSegmentFile(name, file)) {
         RaftLogSegmentFile segmentFile = new RaftLogSegmentFile(file);
-        RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(FileBuffer.allocate(file, RaftLogSegmentDescriptor.BYTES));
+        ByteBuffer buffer = ByteBuffer.allocate(RaftLogSegmentDescriptor.BYTES);
+        try (FileChannel channel = openChannel(file)) {
+          channel.read(buffer);
+          buffer.flip();
+        } catch (IOException e) {
+          throw new RaftIOException(e);
+        }
+
+        RaftLogSegmentDescriptor descriptor = new RaftLogSegmentDescriptor(buffer);
 
         // Load the segment.
         RaftLogSegment<RaftLogEntry> segment = loadSegment(descriptor.id());
@@ -531,8 +491,6 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
         // Add the segment to the segments list.
         log.debug("Found segment: {} ({})", segment.descriptor().id(), segmentFile.file().getName());
         segments.put(segment.index(), segment);
-
-        descriptor.close();
       }
     }
 
