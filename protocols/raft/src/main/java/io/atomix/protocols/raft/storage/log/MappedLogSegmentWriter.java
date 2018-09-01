@@ -15,6 +15,7 @@
  */
 package io.atomix.protocols.raft.storage.log;
 
+import com.esotericsoftware.kryo.KryoException;
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.storage.StorageException;
 import io.atomix.storage.buffer.Bytes;
@@ -219,7 +220,12 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
     }
 
     buffer.position(position + Bytes.INTEGER + Bytes.INTEGER);
-    namespace.serialize(entry, buffer);
+
+    try {
+      namespace.serialize(entry, buffer);
+    } catch (KryoException e) {
+      throw new BufferOverflowException();
+    }
 
     final int length = buffer.position() - (position + Bytes.INTEGER + Bytes.INTEGER);
 

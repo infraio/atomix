@@ -15,6 +15,7 @@
  */
 package io.atomix.protocols.raft.storage.log;
 
+import com.esotericsoftware.kryo.KryoException;
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.storage.StorageException;
 import io.atomix.storage.buffer.Bytes;
@@ -234,8 +235,13 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
       // Serialize the entry.
       memory.clear();
       memory.position(Bytes.INTEGER + Bytes.INTEGER);
-      namespace.serialize(entry, memory);
+      try {
+        namespace.serialize(entry, memory);
+      } catch (KryoException e) {
+        throw new StorageException.TooLarge("Entry size exceeds maximum allowed bytes (" + maxEntrySize + ")");
+      }
       memory.flip();
+
       final int length = memory.limit() - (Bytes.INTEGER + Bytes.INTEGER);
 
       // Ensure there's enough space left in the buffer to store the entry.
