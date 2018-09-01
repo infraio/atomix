@@ -235,7 +235,7 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
     // Create a single byte[] in memory for the entire entry and write it as a batch to the underlying buffer.
     buffer.position(position);
     buffer.putInt(length);
-    buffer.putInt(Bytes.INTEGER, (int) checksum);
+    buffer.putInt((int) checksum);
     buffer.position(position + Bytes.INTEGER + Bytes.INTEGER + length);
 
     // Update the last entry with the correct index/term/length.
