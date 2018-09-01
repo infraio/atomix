@@ -397,7 +397,17 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
    */
   RaftLogSegment<RaftLogEntry> createSegment(RaftLogSegmentDescriptor descriptor) {
     File segmentFile = RaftLogSegmentFile.createSegmentFile(name, directory, descriptor.id());
-    FileChannel channel = createChannel(segmentFile, descriptor);
+
+    RandomAccessFile raf;
+    FileChannel channel;
+    try {
+      raf = new RandomAccessFile(segmentFile, "rw");
+      raf.setLength(descriptor.maxSegmentSize());
+      channel =  raf.getChannel();
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    }
+
     ByteBuffer buffer = ByteBuffer.allocate(RaftLogSegmentDescriptor.BYTES);
     descriptor.copyTo(buffer);
     buffer.flip();
@@ -405,6 +415,12 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
       channel.write(buffer);
     } catch (IOException e) {
       throw new RaftIOException(e);
+    } finally {
+      try {
+        channel.close();
+        raf.close();
+      } catch (IOException e) {
+      }
     }
     RaftLogSegment<RaftLogEntry> segment = newSegment(new RaftLogSegmentFile(segmentFile), descriptor);
     log.debug("Created segment: {}", segment);

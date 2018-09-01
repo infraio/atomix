@@ -22,7 +22,6 @@ import io.atomix.utils.serializer.Namespace;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -63,13 +62,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
 
   private FileChannel openChannel(File file) {
     try {
-      if (file.exists()) {
-        return FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-      } else {
-        RandomAccessFile raf = new RandomAccessFile(file, "rw");
-        raf.setLength(descriptor.maxSegmentSize());
-        return raf.getChannel();
-      }
+      return FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
     } catch (IOException e) {
       throw new RaftIOException(e);
     }
