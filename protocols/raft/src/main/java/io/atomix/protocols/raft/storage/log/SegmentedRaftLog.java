@@ -55,7 +55,6 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
     return new Builder();
   }
 
-  private static final int DEFAULT_BUFFER_SIZE = 1024 * 64;
   private static final int SEGMENT_BUFFER_FACTOR = 3;
 
   private final Logger log = LoggerFactory.getLogger(getClass());
@@ -67,7 +66,6 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
   private final int maxEntrySize;
   private final int maxEntriesPerSegment;
   private final double indexDensity;
-  private final int cacheSize;
   private final boolean flushOnCommit;
   private final SegmentedRaftLogWriter writer;
   private volatile long commitIndex;
@@ -87,7 +85,6 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
       int maxEntrySize,
       int maxEntriesPerSegment,
       double indexDensity,
-      int cacheSize,
       boolean flushOnCommit) {
     this.name = checkNotNull(name, "name cannot be null");
     this.storageLevel = checkNotNull(storageLevel, "storageLevel cannot be null");
@@ -97,7 +94,6 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
     this.maxEntrySize = maxEntrySize;
     this.maxEntriesPerSegment = maxEntriesPerSegment;
     this.indexDensity = indexDensity;
-    this.cacheSize = cacheSize;
     this.flushOnCommit = flushOnCommit;
     open();
     this.writer = openWriter();
@@ -228,6 +224,10 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
       currentSegment.descriptor().update(System.currentTimeMillis());
 
       segments.put(1L, currentSegment);
+    }
+
+    if (storageLevel == StorageLevel.MAPPED) {
+      currentSegment.map();
     }
   }
 
@@ -800,7 +800,9 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
      * @param cacheSize the journal cache size
      * @return the journal builder
      * @throws IllegalArgumentException if the cache size is not positive
+     * @deprecated since 3.0.4
      */
+    @Deprecated
     public Builder withCacheSize(int cacheSize) {
       checkArgument(cacheSize >= 0, "cacheSize must be positive");
       this.cacheSize = cacheSize;
@@ -846,7 +848,6 @@ public class SegmentedRaftLog implements RaftLog<RaftLogEntry> {
           maxEntrySize,
           maxEntriesPerSegment,
           indexDensity,
-          cacheSize,
           flushOnCommit);
     }
   }
