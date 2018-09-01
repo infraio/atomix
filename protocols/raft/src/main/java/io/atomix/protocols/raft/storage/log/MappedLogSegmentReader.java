@@ -40,7 +40,7 @@ class MappedLogSegmentReader<E> implements RaftLogReader<E> {
 
   MappedLogSegmentReader(
       ByteBuffer buffer,
-      RaftLogSegmentDescriptor descriptor,
+      RaftLogSegment segment,
       int maxEntrySize,
       RaftLogIndex index,
       Namespace namespace) {
@@ -48,7 +48,7 @@ class MappedLogSegmentReader<E> implements RaftLogReader<E> {
     this.maxEntrySize = maxEntrySize;
     this.index = index;
     this.namespace = namespace;
-    this.firstIndex = descriptor.index();
+    this.firstIndex = segment.index();
     reset();
   }
 

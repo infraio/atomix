@@ -46,7 +46,7 @@ import java.util.zip.Checksum;
  */
 class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final FileChannel channel;
-  private final RaftLogSegmentDescriptor descriptor;
+  private final RaftLogSegment segment;
   private final int maxEntrySize;
   private final RaftLogIndex index;
   private final Namespace namespace;
@@ -56,18 +56,18 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
 
   FileChannelLogSegmentWriter(
       FileChannel channel,
-      RaftLogSegmentDescriptor descriptor,
+      RaftLogSegment segment,
       int maxEntrySize,
       RaftLogIndex index,
       Namespace namespace) {
     this.channel = channel;
-    this.descriptor = descriptor;
+    this.segment = segment;
     this.maxEntrySize = maxEntrySize;
     this.index = index;
     this.memory = ByteBuffer.allocate((maxEntrySize + Bytes.INTEGER + Bytes.INTEGER) * 2);
     memory.limit(0);
     this.namespace = namespace;
-    this.firstIndex = descriptor.index();
+    this.firstIndex = segment.index();
     reset(0);
   }
 
@@ -152,7 +152,7 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
 
   @Override
   public long getLastIndex() {
-    return lastEntry != null ? lastEntry.index() : descriptor.index() - 1;
+    return lastEntry != null ? lastEntry.index() : segment.index() - 1;
   }
 
   @Override
@@ -197,8 +197,8 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
    * @return Indicates whether the segment is full.
    */
   public boolean isFull() {
-    return size() >= descriptor.maxSegmentSize()
-        || getNextIndex() - firstIndex >= descriptor.maxEntries();
+    return size() >= segment.descriptor().maxSegmentSize()
+        || getNextIndex() - firstIndex >= segment.descriptor().maxEntries();
   }
 
   /**
@@ -246,7 +246,7 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
 
       // Ensure there's enough space left in the buffer to store the entry.
       long position = channel.position();
-      if (descriptor.maxSegmentSize() - position < length + Bytes.INTEGER + Bytes.INTEGER) {
+      if (segment.descriptor().maxSegmentSize() - position < length + Bytes.INTEGER + Bytes.INTEGER) {
         throw new BufferOverflowException();
       }
 
@@ -290,7 +290,7 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
       // Truncate the index.
       this.index.truncate(index);
 
-      if (index < descriptor.index()) {
+      if (index < segment.index()) {
         channel.position(RaftLogSegmentDescriptor.BYTES);
         memory.clear();
         for (int i = 0; i < memory.limit(); i++) {
@@ -327,11 +327,6 @@ class FileChannelLogSegmentWriter<E> implements RaftLogWriter<E> {
 
   @Override
   public void close() {
-    try {
-      flush();
-      channel.close();
-    } catch (IOException e) {
-      throw new RaftIOException(e);
-    }
+    flush();
   }
 }

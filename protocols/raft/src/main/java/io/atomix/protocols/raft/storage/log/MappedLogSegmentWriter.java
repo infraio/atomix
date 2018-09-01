@@ -47,7 +47,7 @@ import java.util.zip.CRC32;
 class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
   private final MappedByteBuffer mappedBuffer;
   private final ByteBuffer buffer;
-  private final RaftLogSegmentDescriptor descriptor;
+  private final RaftLogSegment segment;
   private final int maxEntrySize;
   private final RaftLogIndex index;
   private final Namespace namespace;
@@ -56,17 +56,17 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
 
   MappedLogSegmentWriter(
       MappedByteBuffer buffer,
-      RaftLogSegmentDescriptor descriptor,
+      RaftLogSegment segment,
       int maxEntrySize,
       RaftLogIndex index,
       Namespace namespace) {
     this.mappedBuffer = buffer;
     this.buffer = buffer.slice();
-    this.descriptor = descriptor;
+    this.segment = segment;
     this.maxEntrySize = maxEntrySize;
     this.index = index;
     this.namespace = namespace;
-    this.firstIndex = descriptor.index();
+    this.firstIndex = segment.index();
     reset(0);
   }
 
@@ -138,7 +138,7 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
 
   @Override
   public long getLastIndex() {
-    return lastEntry != null ? lastEntry.index() : descriptor.index() - 1;
+    return lastEntry != null ? lastEntry.index() : segment.index() - 1;
   }
 
   @Override
@@ -171,23 +171,6 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
    */
   public boolean isEmpty() {
     return lastEntry == null;
-  }
-
-  /**
-   * Returns a boolean indicating whether the segment is full.
-   *
-   * @return Indicates whether the segment is full.
-   */
-  public boolean isFull() {
-    return size() >= descriptor.maxSegmentSize()
-        || getNextIndex() - firstIndex >= descriptor.maxEntries();
-  }
-
-  /**
-   * Returns the first index written to the segment.
-   */
-  public long firstIndex() {
-    return firstIndex;
   }
 
   @Override
@@ -271,7 +254,7 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
     // Truncate the index.
     this.index.truncate(index);
 
-    if (index < descriptor.index()) {
+    if (index < segment.index()) {
       buffer.position(RaftLogSegmentDescriptor.BYTES);
       buffer.putInt(0);
       buffer.putInt(0);

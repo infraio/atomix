@@ -45,7 +45,7 @@ class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
 
   FileChannelLogSegmentReader(
       FileChannel channel,
-      RaftLogSegmentDescriptor descriptor,
+      RaftLogSegment segment,
       int maxEntrySize,
       RaftLogIndex index,
       Namespace namespace) {
@@ -54,7 +54,7 @@ class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
     this.index = index;
     this.namespace = namespace;
     this.memory = ByteBuffer.allocate((maxEntrySize + Bytes.INTEGER + Bytes.INTEGER) * 2);
-    this.firstIndex = descriptor.index();
+    this.firstIndex = segment.index();
     reset();
   }
 
@@ -195,10 +195,6 @@ class FileChannelLogSegmentReader<E> implements RaftLogReader<E> {
 
   @Override
   public void close() {
-    try {
-      channel.close();
-    } catch (IOException e) {
-      throw new RaftIOException(e);
-    }
+    // Do nothing. The parent reader manages the channel.
   }
 }

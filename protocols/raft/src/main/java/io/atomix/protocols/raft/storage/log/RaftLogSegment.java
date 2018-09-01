@@ -58,7 +58,7 @@ public class RaftLogSegment<E> implements AutoCloseable {
     this.maxEntrySize = maxEntrySize;
     this.index = new SparseRaftLogIndex(indexDensity);
     this.namespace = namespace;
-    this.writer = new MappableLogSegmentWriter<>(openChannel(file.file()), descriptor, maxEntrySize, index, namespace);
+    this.writer = new MappableLogSegmentWriter<>(openChannel(file.file()), this, maxEntrySize, index, namespace);
   }
 
   private FileChannel openChannel(File file) {
@@ -180,13 +180,23 @@ public class RaftLogSegment<E> implements AutoCloseable {
    */
   MappableLogSegmentReader<E> createReader() {
     checkOpen();
-    MappableLogSegmentReader<E> reader = new MappableLogSegmentReader<>(openChannel(file.file()), descriptor, maxEntrySize, index, namespace);
+    MappableLogSegmentReader<E> reader = new MappableLogSegmentReader<>(
+        openChannel(file.file()), this, maxEntrySize, index, namespace);
     MappedByteBuffer buffer = writer.buffer();
     if (buffer != null) {
       reader.map(buffer);
     }
     readers.add(reader);
     return reader;
+  }
+
+  /**
+   * Closes a segment reader.
+   *
+   * @param reader the closed segment reader
+   */
+  void closeReader(MappableLogSegmentReader<E> reader) {
+    readers.remove(reader);
   }
 
   /**

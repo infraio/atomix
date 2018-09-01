@@ -18,6 +18,7 @@ package io.atomix.protocols.raft.storage.log;
 import io.atomix.protocols.raft.storage.log.index.RaftLogIndex;
 import io.atomix.utils.serializer.Namespace;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
@@ -25,8 +26,8 @@ import java.nio.channels.FileChannel;
  * Mappable log segment reader.
  */
 class MappableLogSegmentReader<E> implements RaftLogReader<E> {
+  private final RaftLogSegment<E> segment;
   private final FileChannel channel;
-  private final RaftLogSegmentDescriptor descriptor;
   private final int maxEntrySize;
   private final RaftLogIndex index;
   private final Namespace namespace;
@@ -34,16 +35,16 @@ class MappableLogSegmentReader<E> implements RaftLogReader<E> {
 
   MappableLogSegmentReader(
       FileChannel channel,
-      RaftLogSegmentDescriptor descriptor,
+      RaftLogSegment<E> segment,
       int maxEntrySize,
       RaftLogIndex index,
       Namespace namespace) {
     this.channel = channel;
-    this.descriptor = descriptor;
+    this.segment = segment;
     this.maxEntrySize = maxEntrySize;
     this.index = index;
     this.namespace = namespace;
-    this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
+    this.reader = new FileChannelLogSegmentReader<>(channel, segment, maxEntrySize, index, namespace);
   }
 
   /**
@@ -54,8 +55,9 @@ class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   void map(ByteBuffer buffer) {
     if (!(reader instanceof MappedLogSegmentReader)) {
       RaftLogReader<E> reader = this.reader;
-      this.reader = new MappedLogSegmentReader<>(buffer, descriptor, maxEntrySize, index, namespace);
+      this.reader = new MappedLogSegmentReader<>(buffer, segment, maxEntrySize, index, namespace);
       this.reader.reset(reader.getNextIndex());
+      reader.close();
     }
   }
 
@@ -65,8 +67,9 @@ class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   void unmap() {
     if (reader instanceof MappedLogSegmentReader) {
       RaftLogReader<E> reader = this.reader;
-      this.reader = new FileChannelLogSegmentReader<>(channel, descriptor, maxEntrySize, index, namespace);
+      this.reader = new FileChannelLogSegmentReader<>(channel, segment, maxEntrySize, index, namespace);
       this.reader.reset(reader.getNextIndex());
+      reader.close();
     }
   }
 
@@ -108,5 +111,12 @@ class MappableLogSegmentReader<E> implements RaftLogReader<E> {
   @Override
   public void close() {
     reader.close();
+    try {
+      channel.close();
+    } catch (IOException e) {
+      throw new RaftIOException(e);
+    } finally {
+      segment.closeReader(this);
+    }
   }
 }
