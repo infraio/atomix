@@ -23,6 +23,7 @@ import io.atomix.utils.serializer.Namespace;
 
 import java.io.IOException;
 import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.zip.CRC32;
@@ -92,41 +93,46 @@ class MappedLogSegmentWriter<E> implements RaftLogWriter<E> {
 
     // Read the entry length.
     buffer.mark();
-    int length = buffer.getInt();
 
-    // If the length is non-zero, read the entry.
-    while (0 < length && length <= maxEntrySize && (index == 0 || nextIndex <= index)) {
+    try {
+      int length = buffer.getInt();
 
-      // Read the checksum of the entry.
-      final long checksum = buffer.getInt() & 0xFFFFFFFFL;
+      // If the length is non-zero, read the entry.
+      while (0 < length && length <= maxEntrySize && (index == 0 || nextIndex <= index)) {
 
-      // Compute the checksum for the entry bytes.
-      final CRC32 crc32 = new CRC32();
-      ByteBuffer slice = buffer.slice();
-      slice.limit(length);
-      crc32.update(slice);
+        // Read the checksum of the entry.
+        final long checksum = buffer.getInt() & 0xFFFFFFFFL;
 
-      // If the stored checksum equals the computed checksum, return the entry.
-      if (checksum == crc32.getValue()) {
-        slice.rewind();
-        final E entry = namespace.deserialize(slice);
-        lastEntry = new Indexed<>(nextIndex, entry, length);
-        this.index.index(nextIndex, position);
-        nextIndex++;
-      } else {
-        break;
+        // Compute the checksum for the entry bytes.
+        final CRC32 crc32 = new CRC32();
+        ByteBuffer slice = buffer.slice();
+        slice.limit(length);
+        crc32.update(slice);
+
+        // If the stored checksum equals the computed checksum, return the entry.
+        if (checksum == crc32.getValue()) {
+          slice.rewind();
+          final E entry = namespace.deserialize(slice);
+          lastEntry = new Indexed<>(nextIndex, entry, length);
+          this.index.index(nextIndex, position);
+          nextIndex++;
+        } else {
+          break;
+        }
+
+        // Update the current position for indexing.
+        position = buffer.position() + length;
+        buffer.position(position);
+
+        buffer.mark();
+        length = buffer.getInt();
       }
 
-      // Update the current position for indexing.
-      position = buffer.position() + length;
-      buffer.position(position);
-
-      buffer.mark();
-      length = buffer.getInt();
+      // Reset the buffer to the previous mark.
+      buffer.reset();
+    } catch (BufferUnderflowException e) {
+      buffer.reset();
     }
-
-    // Reset the buffer to the previous mark.
-    buffer.reset();
   }
 
   @Override
